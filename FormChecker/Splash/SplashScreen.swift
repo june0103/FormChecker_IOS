@@ -128,10 +128,18 @@ private struct JointCheckMotion: View, @MainActor Animatable {
                 CGPoint(x: w * 0.42, y: h * 0.75),
             ]
             // 끝: 체크 모양의 관절점 3개.
+            //
+            // 🔴 이 좌표와 아래 `stroke`·`radius`는 **앱 아이콘과 같은 도형**이다
+            //    (`tools/make_app_icon.swift`). 고쳤으면 아이콘을 다시 뽑는다 —
+            //    안 그러면 모션이 끝나는 모양과 홈 화면 아이콘이 조용히 어긋난다.
+            //
+            // ⚠ 첫 구간이 완만하면 체크가 아니라 **우상향 꺾은선 그래프**로 읽힌다.
+            //   실제로 (0.24,0.56)→(0.45,0.69)은 32°라 그렇게 보였다. 두 구간 모두
+            //   48° 안팎을 유지할 것.
             let end = [
-                CGPoint(x: w * 0.24, y: h * 0.56),
-                CGPoint(x: w * 0.45, y: h * 0.69),
-                CGPoint(x: w * 0.80, y: h * 0.31),
+                CGPoint(x: w * 0.22, y: h * 0.50),
+                CGPoint(x: w * 0.42, y: h * 0.72),
+                CGPoint(x: w * 0.80, y: h * 0.26),
             ]
             let points = zip(start, end).map { from, to in
                 CGPoint(x: from.x + (to.x - from.x) * progress,
@@ -143,7 +151,9 @@ private struct JointCheckMotion: View, @MainActor Animatable {
             let resolved = min(max((progress - 0.42) / 0.58, 0), 1)
             let jointColor = Color.mix(Palette.warning, Palette.lime, resolved)
             let guideAlpha = min(max(1 - progress, 0), 1)
-            let stroke = 11 * scale
+            // 선이 가늘면 관절점이 선에서 떨어져 나와 "구슬 꿴 그래프"로 보인다.
+            // 굵게 두면 관절은 마디의 불룩함으로만 남고 체크가 먼저 읽힌다.
+            let stroke = 16 * scale
             let radius = 15 * scale
 
             // 기준선. 정렬이 끝나면 사라진다.
