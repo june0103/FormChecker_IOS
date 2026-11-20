@@ -16,9 +16,10 @@
 
 ## 현재 상태 (2026-11-20)
 
-- **Phase 0 통과.** 추론 엔진(`PoseEngine`)이 Android와 **같은 키포인트**를 낸다
-  (최대 좌표차 7.16e-07, 게이트 0.01). → `docs/05_Phase0_결과.md`
-- 판정 로직·화면·저장은 **아직 없다.** 다음은 Phase 1(판정 엔진 이식).
+- **Phase 0·1 통과.**
+  - 추론 엔진이 Android와 **같은 키포인트**를 낸다 (최대 좌표차 7.16e-07) → `docs/05_Phase0_결과.md`
+  - 판정 엔진을 Swift로 옮겼고 **테스트 294개 전부 통과** → `docs/04` §15
+- **화면·저장은 아직 없다.** 다음은 Phase 2(운동 화면).
 - 기준 Android 커밋: `79ef0bb` (2026-09-02)
 - 확정된 스택: SwiftPM(CocoaPods 안 씀) · LiteRT C API 직접 래핑 · 최소 iOS 17 · 리샘플링 최근접
 - 미확정: 로컬 DB(GRDB 제안) / 폰트 → `docs/03` §17
@@ -26,7 +27,7 @@
 ```bash
 tools/fetch_litert.sh                                    # 최초 1회
 cd PoseEngine && xcodebuild test -scheme PoseEngine \
-  -destination 'platform=iOS Simulator,name=iPhone 17'   # 16개 통과해야 한다
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 294개 통과해야 한다
 ```
 
 ## 이 프로젝트에서 가장 비싼 실수
@@ -56,14 +57,14 @@ PoseEngine/    Swift Package — 추론과 판정
 ## 작업 순서 (게이트)
 
 ```
-Phase 0  키포인트 동등성 (같은 이미지 → ±0.01)   ◀ 여기서 막히면 전부 재설계
-Phase 1  판정 엔진 이식 + Android 테스트 28개 전부 통과
-Phase 2  운동 화면 (카메라·오버레이·HUD·소리·기준 자세)
-Phase 3  저장·기록·홈·결과 리포트
-Phase 4  안내 4층 · 설정 · 디자인 마감 · 성능 측정
+Phase 0  ✅ 키포인트 동등성 (BGRA·stride·미러링까지)
+Phase 1  ✅ 판정 엔진 이식 + Android 테스트 271개 통과
+Phase 2  ▶  운동 화면 (카메라·오버레이·HUD·소리·기준 자세)
+Phase 3     저장·기록·홈·결과 리포트
+Phase 4     안내 4층 · 설정 · 디자인 마감 · 성능 측정
 ```
 
-**Phase 1의 테스트가 통과하기 전에는 화면을 만들지 않는다.**
+Phase 2에서는 **판정 로직을 화면에 넣지 않는다** — 넣으면 두 화면이 다른 답을 낸다.
 
 ## 코드 규칙
 

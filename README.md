@@ -11,9 +11,13 @@
 
 ## 지금 상태
 
-**Phase 0 통과** (2026-11-20) — iOS가 Android와 **같은 키포인트**를 낸다
-(최대 좌표차 7.16e-07, 게이트 0.01). 판정 로직과 화면은 아직 없다.
-→ [측정 결과](docs/05_Phase0_결과.md)
+**Phase 1 통과** (2026-11-20) — 판정 엔진이 Swift로 옮겨졌고
+**테스트 294개가 전부 통과**한다. 화면과 저장은 아직 없다.
+
+- **Phase 0** — iOS가 Android와 같은 키포인트를 낸다 (최대 좌표차 7.16e-07, 게이트 0.01)
+  → [측정 결과](docs/05_Phase0_결과.md)
+- **Phase 1** — Android `:pose-engine` 테스트 **271개**를 이식해 전부 통과
+  → [이식 명세](docs/04_판정엔진_포팅명세.md)
 
 ```bash
 tools/fetch_litert.sh                     # LiteRT 프레임워크 내려받기 (최초 1회, 약 80MB)
@@ -80,9 +84,11 @@ AVCaptureVideoDataOutput ─▶ RTMPose-s Halpe26 (LiteRT, 192×256) ─▶ 키�
 ## 계획된 구조
 
 ```
-FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 화면 · 저장
-PoseEngine/             로컬 Swift Package — 추론과 판정
-                        의존: Foundation, CoreVideo, CoreGraphics, Accelerate, LiteRT
+FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 화면 · 저장  (아직 없음)
+PoseEngine/             로컬 Swift Package — 추론과 판정                 ✅
+  Sources/              25개 파일 · 3,500줄
+  Tests/                294개 테스트
+                        의존: Foundation, CoreVideo, CoreGraphics, LiteRT
                         금지: SwiftUI, UIKit, AVFoundation, DB
 ```
 
