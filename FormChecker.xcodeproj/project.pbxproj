@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		AA00000000000000000019 /* PoseEngine in Frameworks */ = {isa = PBXBuildFile; productRef = AA00000000000000000018 /* PoseEngine */; };
+		AA0000000000000000001E /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000001D /* Storage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA00000000000000000019 /* PoseEngine in Frameworks */,
+				AA0000000000000000001E /* Storage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +73,7 @@
 			name = FormChecker;
 			packageProductDependencies = (
 				AA00000000000000000018 /* PoseEngine */,
+				AA0000000000000000001D /* Storage */,
 			);
 			productName = FormChecker;
 			productReference = AA0000000000000000000A /* FormChecker.app */;
@@ -102,6 +105,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AA00000000000000000017 /* XCLocalSwiftPackageReference "PoseEngine" */,
+				AA0000000000000000001C /* XCLocalSwiftPackageReference "Storage" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA0000000000000000000E /* Products */;
@@ -258,12 +262,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = PoseEngine;
 		};
+		AA0000000000000000001C /* XCLocalSwiftPackageReference "Storage" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Storage;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		AA00000000000000000018 /* PoseEngine */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PoseEngine;
+		};
+		AA0000000000000000001D /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Storage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

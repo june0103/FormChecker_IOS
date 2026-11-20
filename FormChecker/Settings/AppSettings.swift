@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PoseEngine
 
 /// 안내 항목. 완료 상태를 **Bool이 아니라 버전 값으로** 저장한다.
 ///
@@ -61,6 +62,87 @@ final class AppSettings {
     static let prepRange = 0...20
 
     var effectivePrepSeconds: Int { calibrationPrepSeconds ?? Self.defaultPrepSeconds }
+
+    // ── 하루 목표 ───────────────────────────────────────────
+
+    private static let goalKey = "daily_rep_goal"
+
+    /// 🔴 **기본값이 없다.** 정하지 않았으면 nil이고, 앱이 임의의 숫자를 사실처럼
+    /// 보여주지 않는다 — "30회 중 12회"는 사용자가 30을 정했을 때만 맞는 말이다.
+    var dailyRepGoal: Int? {
+        get {
+            guard defaults.object(forKey: Self.goalKey) != nil else { return nil }
+            let stored = defaults.integer(forKey: Self.goalKey)
+            // 범위 밖은 없는 것으로 친다 — 손상된 값으로 진행률을 그리지 않는다.
+            return DailyGoal.valid(stored) ? stored : nil
+        }
+        set {
+            if let newValue, DailyGoal.valid(newValue) {
+                defaults.set(newValue, forKey: Self.goalKey)
+            } else {
+                defaults.removeObject(forKey: Self.goalKey)
+            }
+        }
+    }
+
+    // ── 신체 정보 ───────────────────────────────────────────
+
+    private static let heightKey = "body_height_cm"
+    private static let weightKey = "body_weight_kg"
+    private static let ageKey = "body_age"
+    private static let sexKey = "body_sex"
+
+    /// 🔴 **네 값이 각각 독립적으로 없을 수 있다.** 반쯤 입력된 상태를 그대로 돌려줘야
+    /// 입력칸이 이미 넣은 값을 덮어쓰지 않는다.
+    var bodyInput: BodyInput {
+        BodyInput(heightCm: heightCm, weightKg: weightKg, age: age, sex: sex)
+    }
+
+    var heightCm: Float? {
+        get { float(Self.heightKey, valid: BodyProfile.validHeight) }
+        set { setFloat(newValue, Self.heightKey, valid: BodyProfile.validHeight) }
+    }
+
+    var weightKg: Float? {
+        get { float(Self.weightKey, valid: BodyProfile.validWeight) }
+        set { setFloat(newValue, Self.weightKey, valid: BodyProfile.validWeight) }
+    }
+
+    var age: Int? {
+        get {
+            guard defaults.object(forKey: Self.ageKey) != nil else { return nil }
+            let stored = defaults.integer(forKey: Self.ageKey)
+            return BodyProfile.validAge(stored) ? stored : nil
+        }
+        set {
+            if let newValue, BodyProfile.validAge(newValue) {
+                defaults.set(newValue, forKey: Self.ageKey)
+            } else {
+                defaults.removeObject(forKey: Self.ageKey)
+            }
+        }
+    }
+
+    var sex: Sex? {
+        get { defaults.string(forKey: Self.sexKey).flatMap(Sex.init(rawValue:)) }
+        set {
+            if let newValue { defaults.set(newValue.rawValue, forKey: Self.sexKey) }
+            else { defaults.removeObject(forKey: Self.sexKey) }
+        }
+    }
+
+    /// 범위를 벗어난 값은 **저장하지 않는다.** 의학적 판단이 아니라 오타 방어다 —
+    /// 몸무게에 700을 넣으면 열량이 10배로 나오는데 그게 틀렸다는 것을 알 길이 없다.
+    private func float(_ key: String, valid: (Float) -> Bool) -> Float? {
+        guard defaults.object(forKey: key) != nil else { return nil }
+        let stored = defaults.float(forKey: key)
+        return valid(stored) ? stored : nil
+    }
+
+    private func setFloat(_ value: Float?, _ key: String, valid: (Float) -> Bool) {
+        if let value, valid(value) { defaults.set(value, forKey: key) }
+        else { defaults.removeObject(forKey: key) }
+    }
 
     // ── 안내 ────────────────────────────────────────────────
 

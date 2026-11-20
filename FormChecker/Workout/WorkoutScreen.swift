@@ -12,6 +12,10 @@ import SwiftUI
 /// **측정·카운팅 중에는 코치마크를 띄우지 않는다.**
 struct WorkoutScreen: View {
 
+    /// 운동 화면을 닫는다. **저장은 여기서 하지 않는다** — 저장할지 말지는 아래에서
+    /// 이미 갈라졌고, 이 닫힘은 결과를 본 뒤든 0회로 나가든 똑같이 홈으로 돌려보낸다.
+    let onClose: () -> Void
+
     @State private var model = WorkoutViewModel()
     @State private var settings = AppSettings.shared
     @State private var repPulse = false
@@ -20,6 +24,26 @@ struct WorkoutScreen: View {
     @State private var coachIndex = 0
     @State private var showCoachMarks = false
     @State private var anchors: [String: CGRect] = [:]
+    @State private var summary: SessionRef?
+    /// 🔴 **확인 대화를 각각 `isPresented`로 띄우지 않는다** — 같은 뷰에
+    /// `.confirmationDialog`를 두 번 붙이면 SwiftUI가 하나만 살린다. 둘 다 "나가기"를
+    /// 묻는 자리라, 하나가 조용히 죽으면 **나가는 길이 막힌다.**
+    @State private var ask: ExitAsk?
+
+    private enum ExitAsk: Int, Identifiable {
+        /// 한 번도 세지 못한 채 `운동 종료`를 눌렀다.
+        case emptyFinish
+        /// 센 것이 있는데 저장하지 않고 나가려 한다.
+        case leaveWithoutSaving
+        var id: Int { rawValue }
+
+        var title: String {
+            switch self {
+            case .emptyFinish: "아직 한 번도 세지 않았어요"
+            case .leaveWithoutSaving: "운동을 그만둘까요?"
+            }
+        }
+    }
 
     private static let coachSteps = [
         CoachStep(id: "startCalibration", title: "먼저 기준 자세를 재요",
@@ -46,6 +70,35 @@ struct WorkoutScreen: View {
                 }
             }
         }
+        .fullScreenCover(item: $summary) { ref in
+            // 결과를 닫으면 운동 화면도 함께 닫힌다 — 끝낸 세션으로 되돌아갈 자리가 없다.
+            SessionSummaryScreen(sessionId: ref.id) {
+                summary = nil
+                onClose()
+            }
+        }
+        // 🔴 `운동 종료`를 누른 사람은 **기록이 남는다고 기대한다.** 0회는 저장하지
+        //    않으므로 아무 말 없이 홈으로 보내면 "종료했는데 기록에 없다"가 된다.
+        //    무엇이 일어나는지 말하고 되돌아갈 길을 함께 준다.
+        //
+        // 🔴 나가기 쪽은 **세션을 저장하지 않는다.** 화면 모서리는 제스처 중에 실수로
+        //    닿기 쉬운 자리라, 한 번의 오터치로 방금 한 운동이 사라질 수 있다.
+        //    "저장하고 나가기"를 넣지 않는 이유: 그건 이미 `운동 종료`다. 선택지를
+        //    셋으로 늘리면 급할 때 잘못 누른다.
+        .confirmationDialog(ask?.title ?? "", isPresented: askBinding,
+                            titleVisibility: .visible, presenting: ask) { which in
+            Button("계속하기", role: .cancel) {}
+            Button(which == .emptyFinish ? "나가기" : "저장 안 하고 나가기",
+                   role: .destructive) { onClose() }
+        } message: { which in
+            switch which {
+            case .emptyFinish:
+                Text("기록으로 남길 동작이 없어서 저장하지 않아요. 계속하시겠어요?")
+            case .leaveWithoutSaving:
+                Text("지금까지 센 \(model.snapshot.repCount)번은 저장되지 않아요. "
+                     + "기록을 남기려면 '운동 종료'를 눌러 주세요.")
+            }
+        }
         .sheet(isPresented: $showExample) {
             SquatExampleSheet {
                 showExample = false
@@ -70,6 +123,12 @@ struct WorkoutScreen: View {
                 repPulse = false
             }
         }
+    }
+
+    /// `confirmationDialog(_:isPresented:presenting:)`는 `item` 형태가 없어서
+    /// 하나의 상태를 Bool로 비춰 준다.
+    private var askBinding: Binding<Bool> {
+        Binding(get: { ask != nil }, set: { if !$0 { ask = nil } })
     }
 
     private func startCoachMarksIfNeeded() {
@@ -105,7 +164,10 @@ struct WorkoutScreen: View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 // 🔴 나가는 자리는 **모든 화면에서 좌상단 아이콘 하나**다.
-                hudButton("chevron.left") {}
+                hudButton("chevron.left") {
+                    if model.snapshot.repCount > 0 { ask = .leaveWithoutSaving }
+                    else { onClose() }
+                }
 
                 Spacer()
 
@@ -231,7 +293,13 @@ struct WorkoutScreen: View {
             .coachAnchor("startCalibration")
 
             Button {
-                model.finishSession()
+                // 🔴 **0회로 끝낸 세션은 저장하지 않는다** — 기록이 아니라 잘못 누른 흔적이다.
+                //    막지 않고 묻는다.
+                if model.canSave {
+                    if let id = model.finishSession() { summary = SessionRef(id: id) }
+                } else {
+                    ask = .emptyFinish
+                }
             } label: {
                 Text("운동 종료")
                     .font(.system(size: 17, weight: .semibold))

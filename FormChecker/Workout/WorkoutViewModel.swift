@@ -3,7 +3,14 @@ import CoreImage
 import Foundation
 import Observation
 import PoseEngine
+import Storage
 import SwiftUI
+
+/// 완주한 rep과 그때의 벽시계 시각.
+struct RecordedRep: Sendable {
+    let rep: CompletedRep
+    let recordedAt: Int64
+}
 
 /// `CGImage`는 Sendable로 표시돼 있지 않지만 **불변 객체**다. 만들어서 한 번 넘길 뿐이라
 /// 경합이 없다.
@@ -39,7 +46,8 @@ final class WorkoutViewModel {
     private(set) var engineError: String?
     private(set) var modelName = "-"
     private(set) var sourceLabel = "-"
-    private(set) var completedReps: [CompletedRep] = []
+    private(set) var recorded: [RecordedRep] = []
+    private(set) var savedSessionId: String?
     /// 번들 영상 경로에서만 쓴다. 카메라는 프리뷰 레이어가 직접 그린다.
     private(set) var previewImage: CGImage?
     private(set) var usingCamera = false
@@ -50,6 +58,9 @@ final class WorkoutViewModel {
     private var source: FrameSource?
     private let work = DispatchQueue(label: "com.mist.formchecker.pipeline", qos: .userInitiated)
     private let gate = FrameGate()
+    private let repository = WorkoutRepository()
+    private let sessionId = UUID().uuidString
+    private var sessionStartedAt = Int64(Date().timeIntervalSince1970 * 1000)
     private(set) var droppedByBackpressure = 0
     /// `CIContext`는 스레드 안전하다(애플 문서). 프레임 변환은 파이프라인 큐에서 돈다.
     private nonisolated(unsafe) let ciContext = CIContext(options: [.useSoftwareRenderer: false])
@@ -161,7 +172,11 @@ final class WorkoutViewModel {
             Task { @MainActor in self?.snapshot = snapshot }
         }
         pipeline.onRepCompleted = { [weak self] rep in
-            Task { @MainActor in self?.completedReps.append(rep) }
+            // 벽시계 시각은 **여기서** 찍는다 — 상태머신의 시각은 단조 시계라 날짜가 없다.
+            let recordedAt = Int64(Date().timeIntervalSince1970 * 1000)
+            Task { @MainActor in
+                self?.recorded.append(RecordedRep(rep: rep, recordedAt: recordedAt))
+            }
         }
         pipeline.onCue = { [weak self] cue in
             Task { @MainActor in self?.audio.play(cue) }
@@ -202,11 +217,90 @@ final class WorkoutViewModel {
         }
     }
 
-    func finishSession() {
-        // 🔴 **0회로 끝낸 세션은 저장하지 않는다** — 사용자에게는 기록이 아니라 잘못 누른 흔적이다.
-        //    (저장소는 Phase 3에서 붙는다. 지금은 판단만 같은 자리에 둔다.)
+    /// 세션을 끝낸다.
+    ///
+    /// 🔴 **0회로 끝낸 세션은 저장하지 않는다** — 사용자에게는 기록이 아니라 **잘못 누른
+    /// 흔적**이고, 기록 목록과 홈 세션 수에 그대로 쌓인다. 거르는 것은 **여기(호출부)의
+    /// 몫이다** — 저장소는 부르면 그대로 저장한다.
+    ///
+    /// - Returns: 저장했으면 세션 id, 0회라 묻는 중이면 nil.
+    @discardableResult
+    func finishSession() -> String? {
+        guard canSave else { return nil }
         audio.play(.sessionEnd)
+        return persist()
     }
 
-    var canSave: Bool { snapshot.repCount > 0 }
+    private func persist() -> String? {
+        let thresholds = FormThresholds()
+        let session = WorkoutSession(
+            id: sessionId,
+            userId: nil,
+            exerciseType: "squat",
+            deviceModel: UIDevice.current.model,
+            osVersion: "iOS " + UIDevice.current.systemVersion,
+            poseModel: modelName,
+            startedAt: sessionStartedAt,
+            endedAt: Int64(Date().timeIntervalSince1970 * 1000),
+            // 형식을 정하지 않은 것이 의도다 — 임계값을 새로 추가한 사람이 여기를
+            // 고쳐야 하는 줄 모르는 상황을 막는다.
+            formThresholds: String(describing: thresholds)
+        )
+
+        let reps = recorded.map { item -> RepRecord in
+            let rep = item.rep
+            let checks = RepScorer.checksFor(rep.summary.cameraAngle)
+            return RepRecord(
+                id: UUID().uuidString,
+                setId: "",                       // 저장 시점에 채워진다
+                repNumber: rep.summary.repIndex,
+                recordedAt: item.recordedAt,
+                durationMs: rep.summary.durationMs,
+                depthScore: rep.score.depthScore.map(Double.init),
+                formScore: nil,                  // ⚠ 항상 nil — 점수 대신 사실을 센다
+                checkedCount: rep.score.checkedCount,
+                warnedCount: rep.score.warnedCount,
+                isValid: true,
+                errorFlags: RepRecordMapping.errorFlags(rep.warnings, checks: checks),
+                cameraAngle: rep.summary.cameraAngle.rawValue,
+                depthLevel: rep.depth?.rawValue,
+                depthBasis: rep.depthBasis?.rawValue,
+                depthRatio: rep.depthValue.map(Double.init),
+                minKneeAngle: rep.summary.aggregate.minKneeAngle.map(Double.init),
+                maxTorsoLean: rep.summary.aggregate.maxTorsoLeanDegrees.map(Double.init),
+                validFrameRatio: Double(rep.summary.aggregate.validFrameRatio),
+                kneeToeSide: rep.kneeToeSide?.rawValue,
+                warningPhases: RepRecordMapping.phases(rep.warningPhases),
+                // 어느 기준으로 판정했는지를 rep마다 남긴다 — 세션 도중에도 바뀔 수 있는 값이다.
+                relaxedForm: false,
+                kneeTolerance: Double(thresholds.kneeToeToleranceRatio),
+                shallowTolerance: Double(thresholds.shallowToleranceRatio)
+            )
+        }
+
+        let metrics = PerformanceMetrics(
+            id: UUID().uuidString,
+            sessionId: sessionId,
+            modelLoadMs: nil,
+            avgInferenceMs: snapshot.inferenceMs,
+            p95InferenceMs: nil,
+            droppedFrameRatio: nil,
+            avgFps: snapshot.analysisFps,
+            delegateType: "cpu",
+            analyzedFrameCount: recorded.reduce(0) { $0 + $1.rep.summary.aggregate.analyzedFrameCount },
+            createdAt: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+
+        do {
+            try repository.save(session: session, reps: reps, metrics: metrics)
+            savedSessionId = sessionId
+            return sessionId
+        } catch {
+            // 저장 실패가 운동 흐름을 막지 않는다. 사용자에게는 알린다.
+            engineError = "기록을 저장하지 못했어요"
+            return nil
+        }
+    }
+
+    var canSave: Bool { !recorded.isEmpty }
 }

@@ -16,23 +16,28 @@
 
 ## 현재 상태 (2026-11-20)
 
-- **Phase 0·1 통과.**
+- **Phase 0·1·2 통과.**
   - 추론 엔진이 Android와 **같은 키포인트**를 낸다 (최대 좌표차 7.16e-07) → `docs/05_Phase0_결과.md`
-  - 판정 엔진을 Swift로 옮겼고 **테스트 294개 전부 통과** → `docs/04` §15
-- **Phase 2 진행 중.** 앱 타겟이 생겼고 운동 화면이 시뮬레이터에서 돈다 —
-  카메라/번들 영상 → 추론 → 판정 → 카운팅, 스켈레톤·기준 자세·피드백·소리.
+  - 판정 엔진을 Swift로 옮겼고 **테스트 304개 전부 통과** → `docs/04` §15
+  - 운동 화면이 시뮬레이터에서 돈다 — 카메라/번들 영상 → 추론 → 판정 → 카운팅,
+    스켈레톤·기준 자세·피드백·소리.
+- **Phase 3 진행 중.** `Storage` 패키지(GRDB)·결과 리포트·날짜별 기록·홈 대시보드가 붙었고
+  **홈 → 운동 → 결과 → 기록**이 끝까지 이어진다. Storage 테스트 28개 통과.
 - 안내는 **동작 예시 → 코치마크** 두 층까지 붙었다. 완료 상태는 Bool이 아니라
   **버전 값**이라, 안내를 고치면 `GuideKey.currentVersion`을 올려 다시 보여줄 수 있다.
-- **아직 없는 것**: 온보딩 4쪽·측정 준비 시트, 0회 종료 다이얼로그, 스와이프 백 차단,
-  결과 화면, 저장(Phase 3).
+- **아직 없는 것**: 온보딩 4쪽·측정 준비 시트, 스와이프 백 차단, 설정 화면(Phase 4).
+  내 정보·하루 목표는 홈에서 여는 시트로만 있다.
 - 기준 Android 커밋: `79ef0bb` (2026-09-02)
-- 확정된 스택: SwiftPM(CocoaPods 안 씀) · LiteRT C API 직접 래핑 · 최소 iOS 17 · 리샘플링 최근접
-- 미확정: 로컬 DB(GRDB 제안) / 폰트 → `docs/03` §17
+- 확정된 스택: SwiftPM(CocoaPods 안 씀) · LiteRT C API 직접 래핑 · 최소 iOS 17 ·
+  리샘플링 최근접 · **로컬 DB는 GRDB 7.12.0**
+- 미확정: 폰트 → `docs/03` §17
 
 ```bash
 tools/fetch_litert.sh                                    # 최초 1회
 cd PoseEngine && xcodebuild test -scheme PoseEngine \
-  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 294개 통과해야 한다
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 304개 통과해야 한다
+cd Storage   && xcodebuild test -scheme Storage \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 28개 통과해야 한다
 ```
 
 ## 이 프로젝트에서 가장 비싼 실수
@@ -50,11 +55,18 @@ cd PoseEngine && xcodebuild test -scheme PoseEngine \
 ## 지켜야 할 경계
 
 ```
-FormChecker/   앱 — SwiftUI · AVFoundation · DB · 화면
+FormChecker/   앱 — SwiftUI · AVFoundation · 화면
 PoseEngine/    Swift Package — 추론과 판정
                의존 허용: Foundation, CoreVideo, CoreGraphics, Accelerate, LiteRT
                의존 금지: SwiftUI, UIKit, AVFoundation, DB
+Storage/       Swift Package — SQLite(GRDB)와 날짜 경계
+               의존 허용: Foundation, GRDB, PoseEngine
+               의존 금지: SwiftUI, UIKit, AVFoundation
 ```
+
+앱 타겟에는 **테스트 타겟이 없다**(서명 문제로 접었다 → `docs/03` §17). 그래서 테스트가
+닿아야 하는 순수 로직은 패키지에 둔다 — 날짜 경계(`weekWindowOf`·`groupByDay`),
+목표 진행률(`GoalProgress`), 신체 정보 범위(`BodyProfile`)가 그래서 저기 있다.
 
 `PoseEngine`이 `AVFoundation`을 import하면 **녹화 영상 주입 벤치마크가 불가능해진다.**
 새 의존성을 추가할 때 이 원칙을 먼저 확인할 것.
@@ -64,9 +76,9 @@ PoseEngine/    Swift Package — 추론과 판정
 ```
 Phase 0  ✅ 키포인트 동등성 (BGRA·stride·미러링까지)
 Phase 1  ✅ 판정 엔진 이식 + Android 테스트 271개 통과
-Phase 2  ▶  운동 화면 — 파이프라인·오버레이·기준 자세·피드백·소리·안내 ✅ / 결과 화면 남음
-Phase 3     저장·기록·홈·결과 리포트
-Phase 4     안내 4층 · 설정 · 디자인 마감 · 성능 측정
+Phase 2  ✅ 운동 화면 — 파이프라인·오버레이·기준 자세·피드백·소리·안내
+Phase 3  ▶  저장·기록·홈·결과 리포트 ✅ / 온보딩·측정 준비 시트 남음
+Phase 4     안내 4층 · 설정 화면 · 디자인 마감 · 성능 측정
 ```
 
 Phase 2에서는 **판정 로직을 화면에 넣지 않는다** — 넣으면 두 화면이 다른 답을 낸다.

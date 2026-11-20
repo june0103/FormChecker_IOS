@@ -65,3 +65,103 @@ enum FeedbackLabels {
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+
+/// 결과 리포트 문구.
+///
+/// 🔴 **점수를 내지 않는다.** 잦은 것부터, 횟수를 그대로 적는다.
+/// **"몇 % 이상이면 습관인가"를 정하지 않는다** — 그 경계에 근거가 없다.
+extension FeedbackLabels {
+
+    static func phase(_ phase: RepPhase?) -> String {
+        switch phase {
+        case .descending: "내려갈 때 "
+        case .bottom: "가장 낮은 지점에서 "
+        case .ascending: "올라올 때 "
+        case .throughout: "동작 내내 "
+        case nil: ""
+        }
+    }
+
+    /// "내려갈 때 왼쪽 무릎이 안쪽으로 모여요"
+    static func sentence(_ finding: Finding) -> String {
+        let when = phase(finding.phase)
+        let side = finding.side.map { $0 == .left ? "왼쪽 " : "오른쪽 " } ?? ""
+        switch finding.warning {
+        case .kneeValgus: return "\(when)\(side)무릎이 안쪽으로 모여요"
+        case .kneeFlared: return "\(when)\(side)무릎이 발끝보다 바깥으로 벌어져요"
+        case .hipShift: return "\(when)체중이 한쪽 발로 쏠려요"
+        case .shallowDepth: return "엉덩이가 무릎 높이까지 내려오지 않았어요"
+        case .excessiveLean: return "\(when)상체가 많이 숙여져요"
+        case .heelRise: return "\(when)뒤꿈치가 바닥에서 떨어져요"
+        case .kneePastToe: return "무릎이 발끝보다 앞으로 나가요"
+        }
+    }
+
+    /// "확인한 10번 중 8번" — **전부일 때만** "모두에서"라고 쓴다.
+    /// 그건 임계값이 아니라 `count == denominator`라는 사실이다.
+    static func count(_ finding: Finding) -> String {
+        finding.everyRep
+            ? "확인한 \(finding.judgedReps)번 모두에서 나왔어요"
+            : "확인한 \(finding.judgedReps)번 중 \(finding.repCount)번"
+    }
+
+    /// 경고 한 가지가 말하는 **몸의 부위/주제**.
+    ///
+    /// ⚠ 경고와 1:1이 아니다 — `kneeValgus`와 `kneeFlared`는 **같은 "무릎 방향"**이다.
+    /// 목록에 그대로 늘어놓으면 같은 말이 두 번 뜬다(`notJudgedSentence`가 중복을 지운다).
+    static func topic(_ warning: FormWarning) -> String {
+        switch warning {
+        case .shallowDepth: "앉은 깊이"
+        case .excessiveLean: "상체 숙임"
+        case .heelRise: "뒤꿈치"
+        case .kneePastToe: "무릎 위치"
+        case .kneeValgus, .kneeFlared: "무릎 방향"
+        case .hipShift: "좌우 균형"
+        }
+    }
+
+    /// 🔴 **못 본 것을 반드시 말한다** — 말하지 않으면 "피드백 없음"이 "전부 괜찮다"로 읽힌다.
+    ///
+    /// 🔴 **이유를 구분해서 말한다** — 각도 때문이면 다른 방향에서 찍으면 풀리고,
+    /// 인식 문제면 각도를 바꿔도 안 풀린다. 사용자가 다음에 **무엇을 바꿀지** 알아야 한다.
+    ///
+    /// 항목을 한 줄씩 쌓지 않고 한 문장으로 묶는 것은 중복 때문만이 아니다 — 여섯 줄짜리
+    /// 경고 목록은 "내가 뭘 잘못했나"로 읽힌다. 못 본 것은 잘못이 아니다.
+    static func notJudgedSentence(_ items: [NotJudged]) -> String {
+        func topics(_ reason: NotJudged.Reason) -> [String] {
+            var seen = Set<String>()
+            return items.filter { $0.reason == reason }.map { topic($0.warning) }
+                .filter { seen.insert($0).inserted }
+        }
+
+        // 조사는 마지막 항목의 종성에 따라 갈린다. 박아두면 항목이 늘 때마다
+        // "앉은 깊이은" 같은 말이 생긴다.
+        func listed(_ names: [String], _ withFinal: String, _ without: String) -> String {
+            names.joined(separator: ", ") + josa(names.last ?? "", withFinal, without)
+        }
+
+        let byAngle = topics(.cameraAngle)
+        let notCaught = topics(.noJudgedRep)
+
+        var text = ""
+        if !byAngle.isEmpty {
+            text += "이번엔 \(listed(byAngle, "은", "는")) 볼 수 없었어요. "
+            text += "카메라 방향 때문이라, 다음엔 다른 방향에서도 한 세트 찍어보시면 같이 봐드릴게요."
+        }
+        if !notCaught.isEmpty {
+            if !text.isEmpty { text += " " }
+            text += "\(listed(notCaught, "은", "는")) 몸이 잘 안 잡혀서 확인하지 못했어요."
+        }
+        return text
+    }
+
+    /// 받침이 있으면 `withFinal`, 없으면 `without`.
+    static func josa(_ word: String, _ withFinal: String, _ without: String) -> String {
+        guard let last = word.unicodeScalars.last else { return withFinal }
+        let hangul = UInt32(0xAC00)...UInt32(0xD7A3)
+        guard hangul.contains(last.value) else { return withFinal }
+        return (last.value - hangul.lowerBound) % 28 == 0 ? without : withFinal
+    }
+}

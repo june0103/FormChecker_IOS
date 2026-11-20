@@ -50,11 +50,19 @@ Android는 판정 로직을 `:pose-engine` 모듈에 격리했다. **Compose·Ca
 **iOS도 똑같이 한다.**
 
 ```
-FormChecker (앱 타겟)        SwiftUI · AVFoundation · GRDB · 화면
-   └── PoseEngine (로컬 Swift Package)
-         의존: Foundation, CoreVideo, CoreGraphics, Accelerate, TensorFlowLiteSwift
-         금지: SwiftUI, UIKit, AVFoundation, GRDB
+FormChecker (앱 타겟)        SwiftUI · AVFoundation · 화면
+   ├── PoseEngine (로컬 Swift Package)
+   │     의존: Foundation, CoreVideo, CoreGraphics, Accelerate, TensorFlowLiteC
+   │     금지: SwiftUI, UIKit, AVFoundation, GRDB
+   └── Storage (로컬 Swift Package)          ← Phase 3에서 추가
+         의존: Foundation, GRDB, PoseEngine
+         금지: SwiftUI, UIKit, AVFoundation
 ```
+
+⚠ **앱 타겟에는 테스트 타겟이 없다.** 시도했지만 `Trying to load an unsigned library`로
+막혔고(§17), 서명을 맞추는 대신 **테스트가 닿아야 하는 순수 로직을 패키지로 내렸다** —
+날짜 경계(`weekWindowOf`·`groupByDay`), 목표 진행률, 신체 정보 범위가 그래서 패키지에 있다.
+화면에 남은 것은 그리기와 조립뿐이라 테스트 타겟 없이도 회귀가 잡힌다.
 
 ⚠ **`PoseEngine`이 `AVFoundation`을 import하는 순간 이 설계가 무너진다.** 입력 타입은
 `CVPixelBuffer`로 충분하다 — 카메라가 준 것이든 `AVAssetReader`가 영상에서 뽑은 것이든
@@ -355,11 +363,11 @@ Android는 플랫폼 `ImageDecoder`로 재생한다(이미지 라이브러리를
 
 | 영역 | 제안 | 대안 | 확정 필요도 |
 |---|---|---|---|
-| 최소 iOS | **17.0** | 16.0 (커버리지↑, API↓) | 🔴 높음 |
+| 최소 iOS | **17.0** ✅ 확정(`@Observable`·`NavigationStack` 전제) | 16.0 | ~~🔴 높음~~ |
 | UI | SwiftUI | — | 낮음 |
 | 추론 | **LiteRT + 같은 .tflite** | Core ML 변환 | 🔴 높음 |
 | 가속 | **CPU 먼저**, delegate는 측정 후 | — | 중 (측정이 결정) |
-| DB | **GRDB.swift** | SwiftData | 🟡 중 |
+| DB | **GRDB.swift 7.12.0** ✅ 확정 | SwiftData | ~~🟡 중~~ |
 | 설정 | UserDefaults + `@Observable` | — | 낮음 |
 | DI | 직접 주입 | swift-dependencies | 낮음 |
 | 폰트 | 정적 weight 번들 | Pretendard | 🟡 중 |

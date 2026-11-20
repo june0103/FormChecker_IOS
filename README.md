@@ -11,15 +11,22 @@
 
 ## 지금 상태
 
-**Phase 2 진행 중** (2026-11-20) — 앱이 시뮬레이터에서 돌아간다.
-카메라(또는 번들 영상) → 추론 → 판정 → 카운팅이 끝까지 이어지고,
-스켈레톤 오버레이·기준 자세 측정·피드백·소리가 붙었다. 저장은 아직 없다.
+**Phase 3 진행 중** (2026-11-20) — 앱이 시뮬레이터에서 돌아간다.
+카메라(또는 번들 영상) → 추론 → 판정 → 카운팅 → **저장 → 결과 → 기록 → 홈**이
+끝까지 이어진다.
 
 - **Phase 0** — iOS가 Android와 같은 키포인트를 낸다 (최대 좌표차 7.16e-07, 게이트 0.01)
   → [측정 결과](docs/05_Phase0_결과.md)
 - **Phase 1** — Android `:pose-engine` 테스트 **271개**를 이식해 전부 통과
   → [이식 명세](docs/04_판정엔진_포팅명세.md)
 - **Phase 2** — 운동 화면. 아래 "지금 보이는 것" 참고
+- **Phase 3** — SQLite 저장(GRDB) · 결과 리포트 · 날짜별 기록 · 홈 대시보드.
+  테스트 **332개** 통과 (PoseEngine 304 + Storage 28)
+
+```bash
+cd Storage && xcodebuild test -scheme Storage \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'   # 28개
+```
 
 ```bash
 xcodebuild build -project FormChecker.xcodeproj -scheme FormChecker \
@@ -105,13 +112,21 @@ AVCaptureVideoDataOutput ─▶ RTMPose-s Halpe26 (LiteRT, 192×256) ─▶ 키�
 ## 계획된 구조
 
 ```
-FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 운동 화면     ✅ Phase 2
+FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 화면          ✅ Phase 2·3
 PoseEngine/             로컬 Swift Package — 추론과 판정                 ✅
-  Sources/              25개 파일 · 3,500줄
-  Tests/                294개 테스트
+  Sources/              26개 파일
+  Tests/                304개 테스트
                         의존: Foundation, CoreVideo, CoreGraphics, LiteRT
                         금지: SwiftUI, UIKit, AVFoundation, DB
+Storage/                로컬 Swift Package — SQLite(GRDB)와 날짜 경계     ✅ Phase 3
+  Tests/                28개 테스트
+                        의존: Foundation, GRDB, PoseEngine
+                        금지: SwiftUI, UIKit, AVFoundation
 ```
+
+**날짜 묶는 규칙이 왜 `Storage`에 있나** — 자정과 주 바뀜은 기기 시계로 재현할 수 없다.
+`weekWindowOf` / `groupByDay`를 현재 시각과 달력을 인자로 받는 **순수 함수**로 두면
+테스트가 그 순간을 만들 수 있고, 홈과 기록이 **같은 함수**를 써서 같은 수를 말한다.
 
 Android가 판정을 `:pose-engine`에 격리한 것과 같은 경계다. 이 경계가 있어야
 **기기 없이 단위 테스트**가 돌고, **녹화 영상을 같은 파이프라인에 주입**해 재현 가능한

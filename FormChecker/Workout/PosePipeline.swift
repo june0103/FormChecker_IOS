@@ -41,7 +41,12 @@ struct CompletedRep: Sendable {
     let warnings: Set<FormWarning>
     let score: RepScore
     let depth: DepthLevel?
+    let depthBasis: DepthBasis?
+    let depthValue: Float?
     let kneeToeSide: Side?
+    /// 🔴 **언제 그랬는지를 말하지 않으면** 사용자는 둘 중 무엇을 언제 고쳐야 하는지 모른다.
+    /// 내려갈 때와 올라올 때가 다른 사람이 있다.
+    let warningPhases: [FormWarning: Set<RepPhase>]
 }
 
 /// 카메라 프레임 → 추론 → 특징 → 판정 → 카운팅.
@@ -85,6 +90,7 @@ final class PosePipeline: @unchecked Sendable {
     private var depthValueAtBottom: Float?
     private var depthBasisAtBottom: DepthBasis?
     private var kneeToeSideInRep: Side?
+    private var phasesInRep: [FormWarning: Set<RepPhase>] = [:]
 
     private var droppedFrames = 0
     private var frameTimes: [Int64] = []
@@ -157,6 +163,7 @@ final class PosePipeline: @unchecked Sendable {
         depthValueAtBottom = nil
         depthBasisAtBottom = nil
         kneeToeSideInRep = nil
+        phasesInRep.removeAll()
     }
 
     // ── 프레임 ──────────────────────────────────────────────
@@ -293,6 +300,11 @@ final class PosePipeline: @unchecked Sendable {
         //    게이트가 없어 "가만히 서 있어도 경고가 뜬다"는 신고가 있었다.
         if inRep {
             frameWarningsInRep.formUnion(form.warnings)
+            if let phase = currentPhase {
+                for warning in form.warnings {
+                    phasesInRep[warning, default: []].insert(phase)
+                }
+            }
             if let value = form.kneeOverToe { kneeOverToeInRep.append(value) }
             if form.kneeAlignment != .good, let side = form.kneeToeSide {
                 kneeToeSideInRep = side
@@ -319,6 +331,16 @@ final class PosePipeline: @unchecked Sendable {
         }
     }
 
+    /// 지금 rep의 어느 구간인가. 상태머신 상태를 그대로 쓴다.
+    private var currentPhase: RepPhase? {
+        switch stateMachine.state {
+        case .descending: .descending
+        case .bottom: .bottom
+        case .ascending: .ascending
+        case .idle, .standing: nil
+        }
+    }
+
     private func complete(summary: RepSummary, nowMs: Int64) {
         let kneePastToe = config.form.kneePastToe(of: kneeOverToeInRep)
         let warnings = RepWarnings.of(frameWarnings: frameWarningsInRep,
@@ -338,8 +360,13 @@ final class PosePipeline: @unchecked Sendable {
         // rep 끝에 **한 번만** 울린다. 인정/경고가 서로 구분되는 짝이어야 한다.
         onCue?(score.warnedCount > 0 ? .repWarned : .repDone)
 
-        onRepCompleted?(CompletedRep(summary: summary, warnings: warnings, score: score,
-                                     depth: depthAtBottom, kneeToeSide: kneeToeSideInRep))
+        // rep 단위 경고는 구간이 "동작 전체"라 구간을 남기지 않는다 —
+        // 최저점에서만 판정하므로 "언제"가 하나뿐이다.
+        onRepCompleted?(CompletedRep(
+            summary: summary, warnings: warnings, score: score,
+            depth: depthAtBottom, depthBasis: depthBasisAtBottom, depthValue: depthValueAtBottom,
+            kneeToeSide: kneeToeSideInRep, warningPhases: phasesInRep
+        ))
         clearRepAccumulators()
     }
 
