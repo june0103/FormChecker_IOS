@@ -36,6 +36,10 @@
 - 스플래시 두 층이 붙었다 — 시스템 런치 화면(배경색만, `Assets.xcassets/BgBase`)과
   앱이 재생하는 **오렌지 → 라임 교정 모션**. 모션이 도는 동안 `ModelPreloader`가
   포즈 모델을 **전용 큐에서** 읽어 두고, 운동 화면은 그걸 가져다 쓴다.
+- 🔴 **G1(rep 카운팅 동등성)은 닫히지 않았다.** Phase 1 완료기준의 절반인 "녹화 영상
+  5개 rep 수 일치"가 비어 있다 — 영상도 Android 기준 횟수도 저장소에 없다.
+  주입 하네스(`PosePipelineSequenceTests`)와 iOS 쪽 수는 나왔다. 번들 `squat_demo.mp4`는
+  동작 예시 일러스트라 **픽스처가 못 된다** → `docs/03` §17.
 - 앱 아이콘이 붙었다. **스플래시와 같은 도형**이고, 손으로 그린 PNG가 아니라
   `tools/make_app_icon.swift`가 같은 좌표에서 뽑는다. 좌표를 고쳤으면 다시 돌릴 것 —
   정본은 `SplashScreen.swift`다. ⚠ 첫 구간이 완만하면 체크가 아니라 **꺾은선 그래프**로
@@ -53,7 +57,7 @@
 ```bash
 tools/fetch_litert.sh                                    # 최초 1회
 cd PoseEngine && xcodebuild test -scheme PoseEngine \
-  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 316개 통과해야 한다
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 324개 통과해야 한다
 cd Storage   && xcodebuild test -scheme Storage \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 28개 통과해야 한다
 ```
@@ -73,8 +77,8 @@ cd Storage   && xcodebuild test -scheme Storage \
 ## 지켜야 할 경계
 
 ```
-FormChecker/   앱 — SwiftUI · AVFoundation · 화면
-PoseEngine/    Swift Package — 추론과 판정
+FormChecker/   앱 — SwiftUI · AVFoundation · 카메라 · 화면 · 소리 재생
+PoseEngine/    Swift Package — 추론과 판정 (**`PosePipeline`이 여기 있다**)
                의존 허용: Foundation, CoreVideo, CoreGraphics, Accelerate, LiteRT
                의존 금지: SwiftUI, UIKit, AVFoundation, DB
 Storage/       Swift Package — SQLite(GRDB)와 날짜 경계
@@ -84,7 +88,9 @@ Storage/       Swift Package — SQLite(GRDB)와 날짜 경계
 
 앱 타겟에는 **테스트 타겟이 없다**(서명 문제로 접었다 → `docs/03` §17). 그래서 테스트가
 닿아야 하는 순수 로직은 패키지에 둔다 — 날짜 경계(`weekWindowOf`·`groupByDay`),
-목표 진행률(`GoalProgress`), 신체 정보 범위(`BodyProfile`)가 그래서 저기 있다.
+목표 진행률(`GoalProgress`), 신체 정보 범위(`BodyProfile`), 그리고 **`PosePipeline`**이
+그래서 저기 있다. 파이프라인은 앱에 있었는데, 판정에 가장 가까운 코드에 테스트가 한 줄도
+닿지 않는 상태였다 → `docs/03` §17.
 
 `PoseEngine`이 `AVFoundation`을 import하면 **녹화 영상 주입 벤치마크가 불가능해진다.**
 새 의존성을 추가할 때 이 원칙을 먼저 확인할 것.
@@ -101,7 +107,11 @@ Phase 4  ▶  설정 화면 ✅ · 성능 측정(p95) ✅ · 폰트 확정 ✅ �
 ```
 
 Phase 2에서는 **판정 로직을 화면에 넣지 않는다** — 넣으면 두 화면이 다른 답을 낸다.
-판정은 전부 `PosePipeline`과 `PoseEngine`에 있고, 화면은 `WorkoutSnapshot`을 그리기만 한다.
+판정은 전부 `PoseEngine`(파이프라인 포함)에 있고, 화면은 `WorkoutSnapshot`을 그리기만 한다.
+
+`PosePipeline`은 **추론을 건너뛰고 자세부터 넣는 입구**를 따로 낸다 —
+`process(pose:width:height:timestampMs:)`. 픽셀버퍼 경로와 **같은 코드**를 타므로
+테스트가 보는 것이 운동 화면이 보는 것과 같다. 🔴 사본을 만들지 말 것.
 
 ⚠ **프레임을 큐에 쌓지 말 것.** `work.async`는 무제한 버퍼라 프레임이 추론보다 빨리
 들어오면 조작(버튼)까지 그 뒤에 줄을 선다. `FrameGate`가 처리 중이면 버린다 —

@@ -3,50 +3,66 @@ import Foundation
 import PoseEngine
 
 /// 한 프레임을 처리한 결과. **값 타입이라 스레드를 건너가도 안전하다.**
-struct WorkoutSnapshot: Sendable {
-    var pose: Pose?
-    var frameWidth: Int = 0
-    var frameHeight: Int = 0
+public struct WorkoutSnapshot: Sendable {
+    public var pose: Pose?
+    public var frameWidth: Int = 0
+    public var frameHeight: Int = 0
 
-    var stage: CalibrationStage = .none
-    var prepRemainingMs: Int64 = 0
-    var measureRemainingMs: Int64 = 0
-    var calibrated = false
-    var cameraAngle: CameraAngle = .side
-    var readyIssues: [ReadyIssue] = []
-    var calibrationProblems: [StandingCalibration.Problem] = []
+    public var stage: CalibrationStage = .none
+    public var prepRemainingMs: Int64 = 0
+    public var measureRemainingMs: Int64 = 0
+    public var calibrated = false
+    public var cameraAngle: CameraAngle = .side
+    public var readyIssues: [ReadyIssue] = []
+    public var calibrationProblems: [StandingCalibration.Problem] = []
 
-    var countingEnabled = false
-    var repCount = 0
-    var repState: RepState = .idle
-    var lastRepDepth: DepthLevel?
-    var lastAbortReason: RepEvent.AbortReason?
+    public var countingEnabled = false
+    public var repCount = 0
+    public var repState: RepState = .idle
+    public var lastRepDepth: DepthLevel?
+    public var lastAbortReason: RepEvent.AbortReason?
 
-    var heldWarnings: [HeldWarning] = []
-    var depth: DepthLevel?
-    var kneeAngle: Float?
+    public var heldWarnings: [HeldWarning] = []
+    public var depth: DepthLevel?
+    public var kneeAngle: Float?
 
-    var inferenceMs: Double = 0
-    var analysisFps: Double = 0
-    var droppedFrames = 0
+    public var inferenceMs: Double = 0
+    public var analysisFps: Double = 0
+    public var droppedFrames = 0
+
+    /// 🔴 멤버와이즈 이니셜라이저는 **internal**이라 패키지 밖에서 안 보인다.
+    ///    전부 기본값이 있으므로 빈 생성자만 내준다.
+    public init() {}
 }
 
-enum CalibrationStage: String, Sendable {
+public enum CalibrationStage: String, Sendable {
     case none, preparing, measuring, ready, failed
 }
 
 /// rep 하나가 끝났을 때 나오는 사실. 세션 리포트의 재료다.
-struct CompletedRep: Sendable {
-    let summary: RepSummary
-    let warnings: Set<FormWarning>
-    let score: RepScore
-    let depth: DepthLevel?
-    let depthBasis: DepthBasis?
-    let depthValue: Float?
-    let kneeToeSide: Side?
+public struct CompletedRep: Sendable {
+    public let summary: RepSummary
+    public let warnings: Set<FormWarning>
+    public let score: RepScore
+    public let depth: DepthLevel?
+    public let depthBasis: DepthBasis?
+    public let depthValue: Float?
+    public let kneeToeSide: Side?
     /// 🔴 **언제 그랬는지를 말하지 않으면** 사용자는 둘 중 무엇을 언제 고쳐야 하는지 모른다.
     /// 내려갈 때와 올라올 때가 다른 사람이 있다.
-    let warningPhases: [FormWarning: Set<RepPhase>]
+    public let warningPhases: [FormWarning: Set<RepPhase>]
+}
+
+/// 미리 읽어 둔 포즈 모델. `loadEngine()`이 이걸 받으면 다시 읽지 않는다.
+public struct PreloadedEngine {
+    public let engine: RTMPoseEngine
+    /// 엔진 초기화에 걸린 시간. **앱 콜드스타트가 아니다.**
+    public let loadMs: Int64
+
+    public init(engine: RTMPoseEngine, loadMs: Int64) {
+        self.engine = engine
+        self.loadMs = loadMs
+    }
 }
 
 /// 카메라 프레임 → 추론 → 특징 → 판정 → 카운팅.
@@ -58,12 +74,12 @@ struct CompletedRep: Sendable {
 /// 이 객체는 **전용 직렬 큐에서만** 동작한다. 결과는 값으로 복사해 메인으로 보낸다.
 /// `@unchecked Sendable`: **모든 메서드는 호출부가 지정한 하나의 직렬 큐에서만 돈다.**
 /// 이 규약을 깨고 두 스레드에서 부르면 경합이 생긴다.
-final class PosePipeline: @unchecked Sendable {
+public final class PosePipeline: @unchecked Sendable {
 
     private let config: SquatAnalyzerConfig
     /// 🔴 **이 세션을 어느 기준으로 판정했나.** rep마다 함께 저장한다 — 남기지 않으면
     /// 나중에 임계값을 재분석할 때 완화한 세션과 아닌 세션이 섞인다.
-    let relaxedForm: Bool
+    public let relaxedForm: Bool
     private let analyzer: SquatFormAnalyzer
     private let counting: CountingThresholds
     private var engine: RTMPoseEngine?
@@ -99,24 +115,24 @@ final class PosePipeline: @unchecked Sendable {
     private var frameTimes: [Int64] = []
     private var lastInferenceMs: Double = 0
     /// 추론 지연 원표본. **p95는 EMA로 낼 수 없다.**
-    private(set) var samples = PerformanceSamples()
+    public private(set) var samples = PerformanceSamples()
     /// 엔진 초기화에 걸린 시간. **앱 콜드스타트가 아니다.**
-    private(set) var modelLoadMs: Int64?
+    public private(set) var modelLoadMs: Int64?
 
     /// 준비 시간. 설정으로 바뀐다 — 화면은 버튼 문구에만 쓴다.
-    var prepSeconds: Int = 5
+    public var prepSeconds: Int = 5
     /// 기준 자세 측정 창. 약 3초.
     private let measureMs: Int64 = 3_000
     /// 준비 자세는 최근 15프레임으로 실시간 갱신한다.
     private let readyWindow = 15
 
-    var onSnapshot: (@Sendable (WorkoutSnapshot) -> Void)?
-    var onRepCompleted: (@Sendable (CompletedRep) -> Void)?
-    var onCue: (@Sendable (AudioCue) -> Void)?
+    public var onSnapshot: (@Sendable (WorkoutSnapshot) -> Void)?
+    public var onRepCompleted: (@Sendable (CompletedRep) -> Void)?
+    public var onCue: (@Sendable (AudioCue) -> Void)?
 
     /// - Parameter relaxedForm: 자세 기준 완화. **세션이 시작될 때 한 번 읽고 끝까지
     ///   바꾸지 않는다** — 도중에 바뀌면 같은 세션 안에서 다른 기준으로 센 rep이 섞인다.
-    init(relaxedForm: Bool = false) {
+    public init(relaxedForm: Bool = false) {
         self.relaxedForm = relaxedForm
         var config = SquatAnalyzerConfig()
         if relaxedForm { config.form = config.form.relaxed() }
@@ -131,12 +147,19 @@ final class PosePipeline: @unchecked Sendable {
         }
     }
 
+    /// 미리 읽어 둔 엔진을 받아오는 자리. 앱이 스플래시에서 채운다.
+    ///
+    /// 🔴 **파이프라인이 미리 읽는 쪽을 직접 찾아가지 않는다.** 찾아가면 패키지가 앱의
+    ///    수명 주기(스플래시가 언제 도는지)를 알아야 하고, 테스트는 그 싱글턴을 피해 갈
+    ///    방법이 없어진다. 묻는 방향을 뒤집어 둔다.
+    public var preloadedEngine: (@Sendable () -> PreloadedEngine?)?
+
     /// 반드시 백그라운드에서. 모델 로드가 수백 ms 걸린다.
-    func loadEngine() throws {
-        // 스플래시가 미리 읽어 뒀으면 그걸 가져온다. 소유권이 이 큐로 넘어오고
-        // `ModelPreloader`는 더 이상 만지지 않는다 — 엔진 하나를 둘이 나눠 쓰면
-        // 추론 중에 서로의 입력을 덮어쓴다.
-        if let preloaded = ModelPreloader.shared.take() {
+    public func loadEngine() throws {
+        // 미리 읽어 둔 것이 있으면 가져온다. 소유권이 이 큐로 넘어오고 넘겨준 쪽은
+        // 더 이상 만지지 않는다 — 엔진 하나를 둘이 나눠 쓰면 추론 중에 서로의 입력을
+        // 덮어쓴다.
+        if let preloaded = preloadedEngine?() {
             engine = preloaded.engine
             modelLoadMs = preloaded.loadMs
             return
@@ -152,17 +175,17 @@ final class PosePipeline: @unchecked Sendable {
         modelLoadMs = Int64((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
     }
 
-    var modelName: String { engine?.modelName ?? "-" }
+    public var modelName: String { engine?.modelName ?? "-" }
 
     /// 큐가 밀려 버린 프레임. 추론에 들어가지도 못했지만 **시도한 프레임이다.**
-    func countBackpressureDrop() {
+    public func countBackpressureDrop() {
         droppedFrames += 1
         samples.recordDrop()
     }
 
     // ── 기준 자세 ───────────────────────────────────────────
 
-    func beginCalibration(nowMs: Int64) {
+    public func beginCalibration(nowMs: Int64) {
         stage = .preparing
         prepEndsMs = nowMs + Int64(prepSeconds) * 1000
         calibrationFrames.removeAll()
@@ -171,7 +194,7 @@ final class PosePipeline: @unchecked Sendable {
         resetCounting()
     }
 
-    func cancelCalibration() {
+    public func cancelCalibration() {
         stage = .none
         calibrationFrames.removeAll()
     }
@@ -199,9 +222,7 @@ final class PosePipeline: @unchecked Sendable {
 
     // ── 프레임 ──────────────────────────────────────────────
 
-    func process(_ packet: FramePacket) {
-        let pixelBuffer = packet.pixelBuffer
-        let timestampMs = packet.timestampMs
+    public func process(pixelBuffer: CVPixelBuffer, timestampMs: Int64) {
         guard let engine else { return }
         guard let pose = engine.analyze(pixelBuffer: pixelBuffer) else {
             droppedFrames += 1
@@ -210,10 +231,23 @@ final class PosePipeline: @unchecked Sendable {
         }
         lastInferenceMs = Double(pose.inferenceTimeNanos) / 1e6
         samples.record(inferenceMs: lastInferenceMs)
-        trackFps(nowMs: timestampMs)
+        process(pose: pose,
+                width: CVPixelBufferGetWidth(pixelBuffer),
+                height: CVPixelBufferGetHeight(pixelBuffer),
+                timestampMs: timestampMs)
+    }
 
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
+    /// 추론을 건너뛰고 **자세부터** 넣는다.
+    ///
+    /// PRD §8의 "고정 입력 주입기"가 여기 붙는다 — 녹화된 좌표나 합성 시퀀스를 그대로
+    /// 넣어 **화면도 카메라도 없이** 기준 자세·카운팅·판정을 끝까지 돌릴 수 있다.
+    /// 위의 픽셀버퍼 경로와 **같은 코드**를 타므로 테스트가 보는 것이 운동 화면이 보는
+    /// 것과 같다.
+    ///
+    /// 🔴 **사본을 만들지 말 것.** 파이프라인이 둘이 되면 두 답이 나온다 — 이 프로젝트가
+    ///    판정 로직을 View에 넣지 않는 이유와 같은 이유다.
+    func process(pose: Pose, width: Int, height: Int, timestampMs: Int64) {
+        trackFps(nowMs: timestampMs)
         let aspect = Float(width) / Float(height)
 
         advanceCalibration(pose: pose, aspect: aspect, nowMs: timestampMs)

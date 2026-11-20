@@ -23,7 +23,7 @@
 - **Phase 3** — SQLite 저장(GRDB) · 결과 리포트 · 날짜별 기록 · 홈 대시보드 · 안내 4층
 - **Phase 4** — 설정 화면 · 자세 기준 완화를 판정에 연결 · 성능 측정(p95) ·
   스플래시와 모델 사전 로드 · 앱 아이콘. 명세 FR 118개 전수 대조.
-  테스트 **346개** 통과 (PoseEngine 316 + Storage 30)
+  테스트 **354개** 통과 (PoseEngine 324 + Storage 30)
 
 ```bash
 cd Storage && xcodebuild test -scheme Storage \
@@ -122,7 +122,7 @@ AVCaptureVideoDataOutput ─▶ RTMPose-s Halpe26 (LiteRT, 192×256) ─▶ 키�
 FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 화면          ✅ Phase 2·3
 PoseEngine/             로컬 Swift Package — 추론과 판정                 ✅
   Sources/              26개 파일
-  Tests/                316개 테스트
+  Tests/                324개 테스트
                         의존: Foundation, CoreVideo, CoreGraphics, LiteRT
                         금지: SwiftUI, UIKit, AVFoundation, DB
 Storage/                로컬 Swift Package — SQLite(GRDB)와 날짜 경계     ✅ Phase 3

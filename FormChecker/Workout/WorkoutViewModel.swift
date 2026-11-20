@@ -75,6 +75,13 @@ final class WorkoutViewModel {
     /// 안에서 다른 기준으로 센 rep이 섞이고, 나중에 임계값을 재분석할 수 없다.
     init(relaxedForm: Bool = AppSettings.shared.relaxedForm) {
         pipeline = PosePipeline(relaxedForm: relaxedForm)
+        // 스플래시가 미리 읽어 둔 엔진이 있으면 그걸 쓴다. 가져가면서 비우므로
+        // 두 번째 세션은 직접 읽는다.
+        pipeline.preloadedEngine = {
+            ModelPreloader.shared.take().map {
+                PreloadedEngine(engine: $0.engine, loadMs: $0.loadMs)
+            }
+        }
     }
 
     // ── 수명 ────────────────────────────────────────────────
@@ -163,7 +170,7 @@ final class WorkoutViewModel {
                 return
             }
             work.async {
-                pipeline.process(packet)
+                pipeline.process(pixelBuffer: packet.pixelBuffer, timestampMs: packet.timestampMs)
                 self?.publishPreview(packet.pixelBuffer)
                 gate.release()
             }

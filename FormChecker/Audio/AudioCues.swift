@@ -1,9 +1,6 @@
 import AVFoundation
 import Foundation
-
-enum AudioCue: String, Sendable, CaseIterable {
-    case countdown, calibrated, failed, repDone, repWarned, sessionEnd
-}
+import PoseEngine
 
 /// 소리 신호.
 ///
