@@ -129,10 +129,11 @@ Android는 성능 비교와 저사양 폴백을 위해 MoveNet(4.7MB)을 남겨�
 
 | 단계 | Android | iOS | 조용히 틀어지는 지점 |
 |---|---|---|---|
-| 1. 프레임 포맷 | `OUTPUT_IMAGE_FORMAT_RGBA_8888` | `kCVPixelFormatType_32BGRA` (표준) | 🔴 **R과 B가 뒤바뀐다.** 크래시가 없고 키포인트가 "조금 이상한" 정도로 나온다 |
+| 1. 프레임 포맷 | `OUTPUT_IMAGE_FORMAT_RGBA_8888` | `kCVPixelFormatType_32BGRA` (표준) | 🔴 **R과 B가 뒤바뀐다.** 실측 어긋남 **0.0339**(게이트의 3.4배). ✅ 테스트로 고정됨 |
 | 2. 회전 | `setOutputImageRotationEnabled(true)` — CameraX가 처리 | `AVCaptureConnection.videoRotationAngle` | 🟡 직접 회전시키면 버퍼 복사 비용이 돌아온다 (Android 실측 p95 3.21ms + GC 3회/300프레임) |
 | 3. 미러링 | 하지 않음 (의도) | **하지 않는다** — `isVideoMirrored = false` | 🔴 전면 카메라에서 켜면 **좌/우 라벨이 뒤집혀 무릎 판정이 반대로** 나온다 |
 | 4. 해상도 | 480×640 요청 (4:3) | `.vga640x480` → 회전 후 480×640 | 🟡 요청이 실패하면 기기마다 다른 크기가 들어온다. **실제 크기를 로그로 확인할 것** |
+| 4b. 행 패딩 | 없음 (`getPixels`) | `bytesPerRow > width × 4` 일 수 있다 | 🔴 실측에서 500×500 버퍼가 **2048**(packed 2000). 가정하면 아래로 갈수록 좌표가 사선으로 밀린다. ✅ 테스트로 고정됨 |
 | 5. 백프레셔 | `STRATEGY_KEEP_ONLY_LATEST` | `alwaysDiscardsLateVideoFrames = true` | — 대응이 정확하다 |
 | 6. letterbox | `Canvas.drawBitmap(src, null, dstRect, null)` = **최근접**(실측 확인) | **최근접으로 직접 구현** | 🔴 양선형을 쓰면 키포인트가 **최대 0.42** 벌어진다 ([05 문서](05_Phase0_결과.md)) |
 | 7. 패딩 색 | `Color.BLACK` | **검정(0,0,0)으로 맞춘다** | 🟡 회색/투명으로 두면 가장자리 키포인트가 달라진다 |
@@ -334,12 +335,13 @@ Android는 플랫폼 `ImageDecoder`로 재생한다(이미지 라이브러리를
 
 ## 16. 동등성 체크리스트 (이식 중 계속 본다)
 
-- [x] 색 채널 순서를 BGRA→RGB로 **정확히** 바꿨는가 *(PNG/RGBA 경로 확인 · BGRA 카메라 경로 미검증)*
+- [x] 색 채널 순서를 BGRA→RGB로 **정확히** 바꿨는가
 - [x] 입력 텐서에 **÷255를 하지 않았는가**
 - [x] letterbox 패딩이 **검정**이고 `padLeft/padTop` 계산이 같은가
 - [x] `inverse()`로 패딩을 **걷어냈는가**
+- [x] `bytesPerRow`를 **그대로 썼는가** (`width × 4`로 가정하지 않았는가)
 - [ ] 각도 계산에 **종횡비 보정**이 들어갔는가
-- [ ] 추론 입력을 **미러링하지 않았는가**
+- [x] 추론 입력을 **미러링하지 않았는가**
 - [ ] 판정 불가를 `nil`로 돌려주는가 (`0`·`false` 금지)
 - [ ] 임계값 숫자가 **04 문서의 표와 글자 그대로** 같은가
 - [ ] rep 단위 판정 2종이 **프레임 경고로 새어 나가지 않는가**

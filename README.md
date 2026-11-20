@@ -18,7 +18,7 @@
 ```bash
 tools/fetch_litert.sh                     # LiteRT 프레임워크 내려받기 (최초 1회, 약 80MB)
 cd PoseEngine && xcodebuild test -scheme PoseEngine \
-  -destination 'platform=iOS Simulator,name=iPhone 17'
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
 ```
 
 

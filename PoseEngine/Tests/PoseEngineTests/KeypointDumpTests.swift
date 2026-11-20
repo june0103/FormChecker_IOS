@@ -18,6 +18,16 @@ final class KeypointDumpTests: XCTestCase {
         "standing_480x640",
     ]
 
+    /// 덤프가 **어느 환경에서 나온 값인지**를 산출물 자체에 남긴다.
+    ///
+    /// 같은 이름의 시뮬레이터가 런타임별로 여러 대 있을 수 있어
+    /// `-destination 'name=iPhone 17'` 만으로는 어느 쪽이 잡혔는지 알 수 없다.
+    func test_실행_환경을_기록한다() {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        print("META,runtime,iOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion),"
+              + "\(ProcessInfo.processInfo.processorCount)코어")
+    }
+
     func test_모델이_번들에_들어_있다() throws {
         let url = try XCTUnwrap(RTMPoseEngine.bundledModelURL, "모델이 번들에 없습니다")
         let size = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int

@@ -13,7 +13,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/TestData/out"
+# ⚠ 같은 이름의 시뮬레이터가 런타임별로 여러 대 있으면 name만으로는 어느 쪽이 잡힐지
+#   보장되지 않는다. OS까지 지정하거나 UDID를 쓴다.
 SIM="${FORMCHECKER_SIM:-iPhone 17}"
+SIM_OS="${FORMCHECKER_SIM_OS:-latest}"
 mkdir -p "$OUT"
 
 echo "── 1/4  iOS 키포인트 덤프 ──────────────────────────────"
@@ -21,7 +24,7 @@ echo "── 1/4  iOS 키포인트 덤프 ────────────�
 (
   cd "$ROOT/PoseEngine"
   xcodebuild test -scheme PoseEngine \
-    -destination "platform=iOS Simulator,name=$SIM" \
+    -destination "platform=iOS Simulator,name=$SIM,OS=$SIM_OS" \
     > "$OUT/ios_test.log" 2>&1
 )
 echo "image,mode,index,name,x,y,confidence" > "$OUT/keypoints_ios.csv"
@@ -29,6 +32,7 @@ grep -o "KPDUMP,[^\"]*" "$OUT/ios_test.log" \
   | sed 's/^KPDUMP,//; s/[[:space:]]*$//' \
   | sort -u -t, -k1,1 -k2,2 -k3,3n >> "$OUT/keypoints_ios.csv"
 echo "   $(($(wc -l < "$OUT/keypoints_ios.csv") - 1))개 행"
+grep -o "META,runtime,[^\"]*" "$OUT/ios_test.log" | sort -u | sed 's/^/   /' 
 
 if [ -z "${FORMCHECKER_AOS:-}" ]; then
   echo

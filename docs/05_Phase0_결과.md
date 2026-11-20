@@ -21,10 +21,20 @@
 제거(`rgb24`)해 프리멀티플라이 때문에 두 플랫폼이 다른 픽셀을 보는 경우를 원천 차단했고,
 양쪽이 **sha256이 같은 파일**을 읽는다.
 
-**경로**
-- Android: `RtmPoseEngine.analyze(Bitmap)` — 앱이 쓰는 그 함수. 에뮬레이터 `portfolio_pixel8`(API 36, arm64)
-- iOS: `RTMPoseEngine.analyze(frame:)` — 시뮬레이터 iPhone 17
-- 모델: **같은 파일** `rtmpose_s_halpe26_256x192_f16.tflite` (11,450,804 B)
+**측정 환경** (수치를 다시 뜰 때 같은 조건인지 확인할 것)
+
+| | Android | iOS |
+|---|---|---|
+| 진입점 | `RtmPoseEngine.analyze(Bitmap)` | `RTMPoseEngine.analyze(frame:)` |
+| 실행 | 에뮬레이터 `portfolio_pixel8` · API 36 · arm64 | 시뮬레이터 **iPhone 17 · iOS 27.2** |
+| 툴체인 | AGP 9.3.1 · JDK 21 · LiteRT 2.1.5 | Xcode 27.2 · Swift 6.4.2 · TensorFlowLiteC 2.17.0 |
+| 호스트 | 같은 Mac (arm64) | 같은 Mac (arm64) |
+
+모델은 **같은 파일**이다 — `rtmpose_s_halpe26_256x192_f16.tflite` (11,450,804 B).
+
+⚠ 같은 이름의 시뮬레이터가 런타임별로 여러 대 있으면 `-destination 'name=iPhone 17'`
+만으로는 어느 쪽이 잡힐지 **보장되지 않는다**(이 머신에는 iOS 26.5용과 27.2용이 함께 있다).
+그래서 `OS=`를 함께 지정하고, 덤프 자체에도 런타임을 남긴다(`META,runtime,...`).
 
 ---
 
@@ -96,16 +106,61 @@ inputCanvas.drawBitmap(frame, null, dstRect, null)   // paint = null
 
 ---
 
-## 5. 아직 모르는 것 ⚠
+## 5. 카메라 경로 — 두 번째 게이트
+
+§2의 게이트는 PNG(RGBA)였다. 앱이 실제로 받는 것은 `AVCaptureVideoDataOutput`의
+**BGRA 픽셀 버퍼**이고, PNG에 없던 것이 둘 붙는다.
+
+| 추가되는 것 | 결과 |
+|---|---|
+| **채널 순서가 반대** (BGRA) | 바꿔 읽으면 **비트 단위로 동일**. 틀리면 **0.0339** 어긋난다(게이트의 3.4배) |
+| **행 패딩(stride)** | 16·64·252바이트를 넣어도 **비트 단위로 동일** |
+| 실제 `CVPixelBuffer` | Android 기준값과 **7.16e-07** — PNG 경로와 같은 수준 |
+
+⚠ **stride는 가상의 걱정이 아니었다.** 500×500 버퍼에서 CoreVideo가 `bytesPerRow`를
+**2048**로 잡았다(packed는 2000). `width × 4`로 가정했다면 **아래로 갈수록 좌표가 사선으로
+밀렸을** 것이다 — 위쪽 관절은 멀쩡하고 발만 틀어지는, 가장 찾기 어려운 모양의 버그다.
+
+### 이제 묶인 전이 관계
+
+```
+BGRA 픽셀버퍼  ==  RGBA 원본 바이트  ==  Android 기준값
+     (§5)                (§2)
+```
+
+### 엔진이 **하지 않는** 것 (의도)
+
+- **회전** — 카메라 레이어가 `AVCaptureConnection.videoRotationAngle`로 처리한다.
+  엔진에서 돌리면 프레임마다 버퍼를 새로 만들게 되고, Android에서 그 비용이
+  p95 3.21ms + 300프레임당 GC 3회로 측정됐다.
+- **미러링** — 🔴 추론 입력을 반전하면 모델의 좌/우 라벨이 뒤바뀌어 **무릎 판정이 반대로**
+  나온다. 반전은 **그릴 때만**. `test_엔진은_입력을_미러링하지_않는다`가 이 규칙을 붙든다.
+
+  실측으로도 확인됐다 — 좌우를 뒤집은 이미지를 넣으면 **라벨이 실제로 맞바뀐다**:
+
+  | 원본 → 반전 | 뒤바뀐 정도 |
+  |---|---|
+  | `leftHeel` ↔ `rightHeel` | 0.00000003 (거의 완벽히 교환) |
+  | `leftKnee` ↔ `rightKnee` | 0.0026 |
+  | `leftAnkle` ↔ `rightAnkle` | 0.0104 |
+
+  즉 전면 카메라 프레임을 반전해서 넣으면 "왼쪽 무릎이 모였다"가 **오른쪽 무릎 경고로**
+  나간다. 사용자는 멀쩡한 쪽을 고치게 된다.
+- **YUV 변환** — 카메라를 BGRA로 설정한다. YUV를 받으면 색 변환 계수가 Android 경로에
+  없던 새 변수가 되므로, 조용히 이상한 답을 내느니 `nil`을 낸다.
+
+---
+
+## 6. 아직 모르는 것 ⚠
 
 이 게이트는 **"같은 비트맵 → 같은 키포인트"** 만 증명했다. 다음은 **미검증**이다.
 
 1. **실기기** — 양쪽 다 에뮬레이터/시뮬레이터, 즉 호스트 CPU다.
    측정된 추론 시간(Android 16.9~26.9ms / iOS 9.6~23.3ms)은 **성능 근거가 아니다.**
    PRD §3.2의 성능 목표는 실기기로 다시 재야 한다.
-2. **실제 카메라 경로** — 여기서 검증한 입력은 PNG(RGBA)다.
-   `AVCaptureVideoDataOutput`의 **BGRA + 회전 + stride 패딩**은 아직 통과하지 않았다.
-   (채널 순서 바꿈은 단위 테스트로만 고정돼 있다)
+2. **살아 있는 카메라** — 픽셀 버퍼 경로는 §5에서 닫혔지만, `AVCaptureSession` 자체는
+   아직 붙이지 않았다. 남은 것은 **세션 설정이 실제로 BGRA·480×640을 주는가**와
+   **회전이 기대대로 적용되는가**다. 둘 다 Phase 2에서 실기기로 확인한다.
 3. **영상 시퀀스** — 정지 이미지 4장뿐이다. 프레임 간 스무딩·상태머신은 Phase 1에서.
 4. **판정 로직** — 아직 한 줄도 이식하지 않았다. 이 게이트는 그 **전제**를 확인한 것이다.
 5. **Core ML / Metal delegate** — CPU 경로만 썼다. delegate를 켜면 수치가 달라질 수 있으므로
@@ -113,7 +168,7 @@ inputCanvas.drawBitmap(frame, null, dstRect, null)   // paint = null
 
 ---
 
-## 6. 코드에 고정한 것
+## 7. 코드에 고정한 것
 
 | 어디 | 무엇 |
 |---|---|
@@ -121,6 +176,7 @@ inputCanvas.drawBitmap(frame, null, dstRect, null)   // paint = null
 | `KeypointEquivalenceTests` | Android 기준값 CSV와 대조. 게이트 0.01, 실측 수준 **0.001**로 이중 확인 (현재 7.16e-07) |
 | `KeypointEquivalenceTests.test_양선형_보간은_Android와_어긋난다` | **"더 좋은 보간으로 바꾸자"는 제안이 왜 틀렸는지**를 숫자로 붙들어 둔다 |
 | `FramePreprocessorTests` | 색 순서·패딩 색·0~255 raw·크기 동일 시 보간 무관 |
+| `PixelBufferEquivalenceTests` | BGRA·stride·`CVPixelBuffer`·미러링 금지·YUV 거절 |
 | `Resources/keypoints_android.csv` | Android 기준값(104행)을 저장소에 커밋 |
 
 기준값을 다시 뜨려면:
@@ -131,11 +187,10 @@ FORMCHECKER_AOS=~/Developer/FormChecker tools/phase0.sh
 
 ---
 
-## 7. 다음
+## 8. 다음
 
 **Phase 1 — 판정 엔진 이식.** `Geometry` → `FrameFeatures` → `SquatThresholds` →
 `RepStateMachine` → `SquatFormAnalyzer` 순서로 옮기고, Android 단위 테스트 28개 파일을
 Swift로 전부 통과시킨다. ([04 문서 §1](04_판정엔진_포팅명세.md)의 이식 순서)
 
-그 전에 한 가지 — **BGRA 카메라 경로를 이 게이트에 추가**하는 편이 낫다. 지금은 PNG만
-통과했고, 실제 앱이 쓰는 입력은 BGRA다.
+카메라 경로는 §5에서 닫았으므로, Phase 1은 순수 판정 로직에만 집중하면 된다.
