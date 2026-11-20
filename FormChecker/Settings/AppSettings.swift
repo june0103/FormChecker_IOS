@@ -7,19 +7,29 @@ import PoseEngine
 /// 🔴 안내 내용이 바뀌면 버전을 올려 **다시 보여줄 수 있어야 한다.** Bool로 두면
 /// "이미 봤다"가 영원히 참이라, 바뀐 안내를 아무도 보지 못한다.
 enum GuideKey: String, CaseIterable, Sendable {
+    /// ① 설치 첫 실행 4쪽.
+    case onboarding
+    /// ② 첫 운동 전 측정 준비 확인.
+    case measurementPrep
+    /// ③ 동작 예시.
     case squatExample
+    /// ④ 화면별 코치마크.
     case workoutCoachMarks
 
     /// 안내 내용을 바꾸면 이 값을 올린다.
     var currentVersion: Int {
         switch self {
+        case .onboarding: 1
+        case .measurementPrep: 1
         case .squatExample: 1
         case .workoutCoachMarks: 1
         }
     }
 
     /// 설정의 `메뉴 안내 다시 표시`가 되돌리는 대상인가.
-    /// 동작 예시는 그 자리에서 바로 다시 보여주므로 여기 포함하지 않는다.
+    ///
+    /// 동작 예시와 측정 준비는 **그 자리에서 바로 다시** 보여주므로 여기 포함하지 않고,
+    /// 온보딩은 앱을 켤 때만 뜨는 자리라 `앱 사용법`이 따로 되돌린다.
     var isMenuTutorial: Bool { self == .workoutCoachMarks }
 }
 

@@ -15,6 +15,7 @@ struct HomeScreen: View {
     let onOpenHistory: () -> Void
 
     @State private var model = HomeViewModel()
+    @State private var settings = AppSettings.shared
     /// 그래프에서 고른 날. nil이면 오늘이다 — **날짜가 넘어가도 "오늘"을 계속 가리킨다.**
     @State private var pickedIndex: Int?
     /// 🔴 **시트 두 개를 각각 `isPresented`로 띄우지 않는다** — 같은 뷰에 `.sheet`를
@@ -24,6 +25,10 @@ struct HomeScreen: View {
 
     private enum Sheet: Int, Identifiable {
         case goal, body
+        /// 첫 운동 전. 확인하면 완료로 저장하고 운동으로 간다.
+        case prepBeforeWorkout
+        /// `측정 팁`에서 다시 열었다. 운동으로 보내지 않는다.
+        case prepReview
         var id: Int { rawValue }
     }
 
@@ -62,6 +67,19 @@ struct HomeScreen: View {
                     model.bodyChanged()
                     sheet = nil
                 }
+            case .prepBeforeWorkout:
+                MeasurementPrepSheet(mode: .beforeFirstWorkout) {
+                    sheet = nil
+                } onReady: {
+                    // 🔴 `준비됐어요`를 눌렀을 때만 완료로 친다. **취소는 완료가 아니다.**
+                    settings.markSeen(.measurementPrep)
+                    sheet = nil
+                    onStartWorkout()
+                }
+                .presentationDetents([.large])
+            case .prepReview:
+                MeasurementPrepSheet(mode: .review) { sheet = nil }
+                    .presentationDetents([.large])
             }
         }
     }
@@ -154,14 +172,36 @@ struct HomeScreen: View {
     // ── 운동 시작 ───────────────────────────────────────────
 
     private var startButton: some View {
-        Button(action: onStartWorkout) {
-            Text("운동 시작")
-                .font(.system(size: 17, weight: .semibold))
-                .frame(maxWidth: .infinity, minHeight: 56)
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Button {
+                // 🔴 첫 운동 전에는 측정 준비 안내를 **먼저** 본다. 바로 보내면
+                //    안내를 건너뛴 것이 되고, 그 사람은 폰을 세운 뒤에야 무엇이
+                //    필요한지 알게 된다.
+                if settings.hasSeen(.measurementPrep) { onStartWorkout() }
+                else { sheet = .prepBeforeWorkout }
+            } label: {
+                Text("운동 시작")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 56)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.onSolid)
+            .background(Palette.lime, in: RoundedRectangle(cornerRadius: Radius.md))
+
+            // 안내를 한 번 본 뒤에도 **핵심 한 줄은 남긴다.** 촬영 준비는 매번 필요한
+            // 것이지 한 번 읽고 끝나는 것이 아니다.
+            HStack(alignment: .firstTextBaseline) {
+                Text(Onboarding.prepShortHint)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.info)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: Spacing.sm)
+                Button("측정 팁") { sheet = .prepReview }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.lime)
+                    .frame(minHeight: TouchTarget.min)
+            }
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(Palette.onSolid)
-        .background(Palette.lime, in: RoundedRectangle(cornerRadius: Radius.md))
     }
 
     // ── 이번 주 ─────────────────────────────────────────────
