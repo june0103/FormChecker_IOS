@@ -1,0 +1,18 @@
+# Xcode / SwiftPM
+.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+.swiftpm/
+.build/
+
+# LiteRT 프레임워크 — tools/fetch_litert.sh 가 내려받는다 (xcframework 3개 180MB+)
+PoseEngine/ThirdParty/
+
+# 테스트 산출물 (키포인트 덤프·비교 리포트)
+TestData/out/
+
+# 로컬 설정·키
+*.local
