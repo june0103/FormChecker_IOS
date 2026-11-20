@@ -133,6 +133,14 @@ final class PosePipeline: @unchecked Sendable {
 
     /// 반드시 백그라운드에서. 모델 로드가 수백 ms 걸린다.
     func loadEngine() throws {
+        // 스플래시가 미리 읽어 뒀으면 그걸 가져온다. 소유권이 이 큐로 넘어오고
+        // `ModelPreloader`는 더 이상 만지지 않는다 — 엔진 하나를 둘이 나눠 쓰면
+        // 추론 중에 서로의 입력을 덮어쓴다.
+        if let preloaded = ModelPreloader.shared.take() {
+            engine = preloaded.engine
+            modelLoadMs = preloaded.loadMs
+            return
+        }
         guard let url = RTMPoseEngine.bundledModelURL else {
             throw NSError(domain: "PosePipeline", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "모델이 번들에 없습니다"])

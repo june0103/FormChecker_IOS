@@ -31,6 +31,8 @@ struct RootView: View {
 
     @State private var path: [Route] = []
     @State private var settings = AppSettings.shared
+    /// 스플래시는 **앱을 켤 때 한 번만** 돈다. 배경에서 돌아올 때는 다시 돌지 않는다.
+    @State private var splashing = true
     /// 🔴 **덮개 둘을 각각 `isPresented`로 띄우지 않는다** — 같은 뷰에
     /// `.fullScreenCover`를 두 번 붙이면 SwiftUI가 하나만 살린다(홈의 시트들과 같은
     /// 함정). 온보딩이 죽으면 첫 실행 안내가 영영 안 뜨고, 운동이 죽으면 앱이 아무것도
@@ -49,6 +51,19 @@ struct RootView: View {
     }
 
     var body: some View {
+        // 🔴 **스플래시가 갈 곳을 정해서 넘긴다**(FR-SPL-06). 홈을 먼저 그린 뒤
+        //    온보딩이 덮으면 홈이 한 프레임 스친다.
+        if splashing {
+            SplashScreen { needsOnboarding in
+                if needsOnboarding { cover = .onboarding }
+                splashing = false
+            }
+        } else {
+            main
+        }
+    }
+
+    private var main: some View {
         NavigationStack(path: $path) {
             HomeScreen {
                 cover = .workout
@@ -99,10 +114,6 @@ struct RootView: View {
                     .interactiveDismissDisabled()
             }
         }
-        // 설치 후 첫 실행인가. **여기서 한 번만 읽는다** — 매 렌더마다 `UserDefaults`를
-        // 보면 온보딩을 끝낸 순간 화면이 중간에 갈아끼워진다.
-        .task {
-            if !settings.hasSeen(.onboarding) { cover = .onboarding }
-        }
+        // 설치 후 첫 실행인지는 **스플래시가 이미 읽어서** `cover`에 넣어 뒀다.
     }
 }
