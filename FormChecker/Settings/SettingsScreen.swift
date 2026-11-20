@@ -33,15 +33,18 @@ struct SettingsScreen: View {
     }
 
     var body: some View {
+        // ⚠ **미해결 — 이 화면에 남은 렌더 artifact.** 스크롤 내용의 **글자만**
+        //   헤더 줄에 한 번 더 그려진다(배경은 복제되지 않는다).
+        //   좁혀 놓은 조건: **스크롤뷰의 위가 화면 꼭대기가 아니면 난다.**
+        //   형제로 둔 헤더·`Color.clear` 한 줄·`safeAreaInset`·`overlay`·시스템
+        //   네비게이션 바까지 전부 같은 증상이고, 스크롤뷰만 두면 나지 않는다.
+        //   원인이 아닌 것으로 확인: `Stepper`·`Divider`·`if/else` 분기·`.id()`·
+        //   `@State` 소유 방식·뷰모델 분리·`LazyVStack`·`.clipped()`·
+        //   `scrollEdgeEffectHidden`/`scrollEdgeEffectStyle(.hard)`·접근성 수식어.
+        //   → `docs/03` §17
         VStack(spacing: 0) {
             header
             ScrollView {
-                // ⚠ **미해결 — 이 화면에만 남은 렌더 artifact.**
-                //   카드 안에서 **값이 바뀌는 뷰**(준비 시간, 하루 목표 값 …)가 스크롤
-                //   원점에 한 번 더 그려진다. 고정 문자열은 멀쩡하다.
-                //   확인한 것: `Stepper`·`Divider`·`if/else` 분기·`.id` 고정·
-                //   `@State` 소유 방식·뷰모델 분리·`LazyVStack` 모두 원인이 아니다.
-                //   기능에는 영향이 없어 일단 남겨 두고 `docs/03` §17에 적었다.
                 LazyVStack(alignment: .leading, spacing: Spacing.lg) {
                     relaxedSection
                     bodySection

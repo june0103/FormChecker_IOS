@@ -57,7 +57,7 @@ struct RootView: View {
             } onOpenSettings: {
                 path.append(.settings)
             }
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .history:
@@ -66,15 +66,15 @@ struct RootView: View {
                     } onOpen: { sessionId in
                         path.append(.summary(sessionId))
                     }
-                    .navigationBarHidden(true)
+                    .toolbar(.hidden, for: .navigationBar)
                 case .summary(let sessionId):
                     SessionSummaryScreen(sessionId: sessionId, homeTitle: "닫기") {
                         path.removeLast()
                     }
-                    .navigationBarHidden(true)
+                    .toolbar(.hidden, for: .navigationBar)
                 case .settings:
                     SettingsScreen { path.removeLast() }
-                        .navigationBarHidden(true)
+                        .toolbar(.hidden, for: .navigationBar)
                 }
             }
         }
