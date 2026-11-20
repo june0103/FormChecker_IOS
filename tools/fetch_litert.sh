@@ -43,6 +43,33 @@ SRC="$CACHE/extract/TensorFlowLiteC-$VERSION/Frameworks"
 for fw in TensorFlowLiteC TensorFlowLiteCCoreML TensorFlowLiteCMetal; do
   rm -rf "$DEST/$fw.xcframework"
   cp -R "$SRC/$fw.xcframework" "$DEST/"
+
+  # ⚠ Google이 배포하는 프레임워크에는 Info.plist가 없다. CocoaPods는 정적 링크만 하고
+  #   번들을 들여다보지 않아 문제가 안 되지만, Xcode 앱 타겟은 빌드 마지막의
+  #   `builtin-validationUtility`에서 "did not contain an Info.plist"로 실패한다.
+  #   내용은 최소한으로 채운다 — 정적 아카이브라 런타임에 로드되지 않는다.
+  for slice in "$DEST/$fw.xcframework"/*/; do
+    inner="$slice$fw.framework"
+    [ -d "$inner" ] || continue
+    [ -f "$inner/Info.plist" ] && continue
+    cat > "$inner/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>$fw</string>
+  <key>CFBundleIdentifier</key><string>org.tensorflow.$fw</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>$fw</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>MinimumOSVersion</key><string>12.0</string>
+</dict>
+</plist>
+PLIST
+  done
   echo "  ✓ $fw.xcframework"
 done
 

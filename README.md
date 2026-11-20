@@ -11,13 +11,32 @@
 
 ## 지금 상태
 
-**Phase 1 통과** (2026-11-20) — 판정 엔진이 Swift로 옮겨졌고
-**테스트 294개가 전부 통과**한다. 화면과 저장은 아직 없다.
+**Phase 2 진행 중** (2026-11-20) — 앱이 시뮬레이터에서 돌아간다.
+카메라(또는 번들 영상) → 추론 → 판정 → 카운팅이 끝까지 이어지고,
+스켈레톤 오버레이·기준 자세 측정·피드백·소리가 붙었다. 저장은 아직 없다.
 
 - **Phase 0** — iOS가 Android와 같은 키포인트를 낸다 (최대 좌표차 7.16e-07, 게이트 0.01)
   → [측정 결과](docs/05_Phase0_결과.md)
 - **Phase 1** — Android `:pose-engine` 테스트 **271개**를 이식해 전부 통과
   → [이식 명세](docs/04_판정엔진_포팅명세.md)
+- **Phase 2** — 운동 화면. 아래 "지금 보이는 것" 참고
+
+```bash
+xcodebuild build -project FormChecker.xcodeproj -scheme FormChecker \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+```
+
+### 지금 보이는 것
+
+시뮬레이터에는 카메라가 없어 **번들 영상**(`squat_demo.mp4`)이 같은 파이프라인으로 들어간다.
+실기기에서는 카메라가 자동으로 잡힌다.
+
+- 스켈레톤 오버레이 26점 — **발 6개 포함**
+- `기준 자세 재기` → 준비 카운트다운 → 3초 측정 → 촬영 방향 다수결
+- ⚠ **데모 영상은 사선 촬영이라 앱이 측정을 거부한다**(`비스듬해요`). 설계대로다 —
+  45도에서는 정면·측면 어느 판정도 믿을 수 없다. rep 카운팅까지 보려면 정면이나 측면으로
+  찍은 영상이 필요하다
+- 추론 9.8~13.5ms · 30fps (시뮬레이터, 호스트 CPU — **기기 성능이 아니다**)
 
 ```bash
 tools/fetch_litert.sh                     # LiteRT 프레임워크 내려받기 (최초 1회, 약 80MB)
@@ -84,7 +103,7 @@ AVCaptureVideoDataOutput ─▶ RTMPose-s Halpe26 (LiteRT, 192×256) ─▶ 키�
 ## 계획된 구조
 
 ```
-FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 화면 · 저장  (아직 없음)
+FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 운동 화면     ✅ Phase 2
 PoseEngine/             로컬 Swift Package — 추론과 판정                 ✅
   Sources/              25개 파일 · 3,500줄
   Tests/                294개 테스트
