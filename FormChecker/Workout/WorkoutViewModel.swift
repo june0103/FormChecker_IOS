@@ -185,8 +185,21 @@ final class WorkoutViewModel {
         Task { @MainActor in self.droppedByBackpressure += 1 }
     }
 
-    func beginCalibration() {
-        work.async { [pipeline] in pipeline.beginCalibration(nowMs: Monotonic.nowMs) }
+    /// 전면 카메라는 프리뷰가 거울처럼 보인다 — **그릴 때만** 뒤집는다.
+    var mirrorPreview: Bool { usingCamera && cameraSource?.position == .front }
+
+    func toggleCamera() {
+        guard let camera = cameraSource else { return }
+        camera.togglePosition()
+        // 렌즈가 바뀌면 기준선이 무효다. 다시 재게 한다.
+        work.async { [pipeline] in pipeline.cancelCalibration() }
+    }
+
+    func beginCalibration(prepSeconds: Int) {
+        work.async { [pipeline] in
+            pipeline.prepSeconds = prepSeconds
+            pipeline.beginCalibration(nowMs: Monotonic.nowMs)
+        }
     }
 
     func finishSession() {

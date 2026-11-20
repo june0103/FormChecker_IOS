@@ -3,15 +3,32 @@ import SwiftUI
 
 /// 운동 화면.
 ///
-/// 🔴 **프리뷰는 화면 폭 전부 · 3:4 · 상단 고정이고 이게 천장이다.** 세로 공간을 더 줘도
-/// 커지지 않는다. 3:4는 모델이 정한 값이다 — RTMPose 입력이 192×256이라 letterbox 패딩이
-/// 0이고, 16:9로 바꾸면 가로를 75%만 쓰며 정면 판정(전부 수평 측정)의 근거가 흔들린다.
+/// 🔴 **프리뷰는 화면 폭 전부 · 3:4 · 상단 고정이고 이게 천장이다.** 3:4는 모델이 정한
+/// 값이다 — RTMPose 입력이 192×256이라 letterbox 패딩이 0이고, 16:9로 바꾸면 가로를 75%만
+/// 쓰며 정면 판정(전부 수평 측정)의 근거가 흔들린다. 프리뷰 **아래는 스크롤**이다.
 ///
-/// 프리뷰 **아래는 스크롤**이다 — 안내가 길어지면 버튼이 잘린다.
+/// ## 안내 순서가 겹치지 않게 화면이 명시적으로 막는다
+/// `권한 → 동작 예시 → 코치마크 → (사용자가 직접) 기준 자세`
+/// **측정·카운팅 중에는 코치마크를 띄우지 않는다.**
 struct WorkoutScreen: View {
 
     @State private var model = WorkoutViewModel()
+    @State private var settings = AppSettings.shared
     @State private var repPulse = false
+
+    @State private var showExample = false
+    @State private var coachIndex = 0
+    @State private var showCoachMarks = false
+    @State private var anchors: [String: CGRect] = [:]
+
+    private static let coachSteps = [
+        CoachStep(id: "startCalibration", title: "먼저 기준 자세를 재요",
+                  body: "몇 걸음 떨어져 곧게 서면 앱이 다리 길이와 촬영 방향을 확인해요."),
+        CoachStep(id: "counter", title: "그 뒤부터 횟수를 세요",
+                  body: "기준 자세를 재기 전에는 세지 않아요. 왜 안 세는지는 숫자 아래에 나와요."),
+        CoachStep(id: "example", title: "동작이 헷갈리면 여기서",
+                  body: "따라 할 동작을 언제든 다시 볼 수 있어요."),
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,7 +36,33 @@ struct WorkoutScreen: View {
             ScrollView { controls }
         }
         .background(Palette.bgBase)
-        .task { await model.start() }
+        .onPreferenceChange(CoachAnchorKey.self) { anchors = $0 }
+        .overlay {
+            if showCoachMarks {
+                CoachMarkOverlay(steps: Self.coachSteps, anchors: anchors,
+                                 index: $coachIndex) {
+                    showCoachMarks = false
+                    settings.markSeen(.workoutCoachMarks)
+                }
+            }
+        }
+        .sheet(isPresented: $showExample) {
+            SquatExampleSheet {
+                showExample = false
+                settings.markSeen(.squatExample)
+                startCoachMarksIfNeeded()
+            }
+            .presentationDetents([.large])
+        }
+        .task {
+            await model.start()
+            // 권한·엔진이 준비된 뒤에 안내를 시작한다.
+            if !settings.hasSeen(.squatExample) {
+                showExample = true
+            } else {
+                startCoachMarksIfNeeded()
+            }
+        }
         .onDisappear { model.stop() }
         .onChange(of: model.snapshot.repCount) { _, _ in
             withAnimation(.easeOut(duration: Motion.repPulse)) { repPulse = true }
@@ -27,6 +70,14 @@ struct WorkoutScreen: View {
                 repPulse = false
             }
         }
+    }
+
+    private func startCoachMarksIfNeeded() {
+        // 측정·카운팅 중에는 띄우지 않는다.
+        guard !settings.hasSeen(.workoutCoachMarks),
+              model.snapshot.stage == .none else { return }
+        coachIndex = 0
+        showCoachMarks = true
     }
 
     // ── 프리뷰 + HUD ────────────────────────────────────────
@@ -41,7 +92,8 @@ struct WorkoutScreen: View {
                     .resizable()
                     .scaledToFill()
             }
-            SkeletonOverlay(pose: model.snapshot.pose, mirrored: false)
+            // 🔴 추론은 반전 없이 한다. 반전은 **그릴 때만**.
+            SkeletonOverlay(pose: model.snapshot.pose, mirrored: model.mirrorPreview)
             hud
         }
         .aspectRatio(3.0 / 4.0, contentMode: .fit)
@@ -53,13 +105,7 @@ struct WorkoutScreen: View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 // 🔴 나가는 자리는 **모든 화면에서 좌상단 아이콘 하나**다.
-                Button {
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: TouchTarget.min, height: TouchTarget.min)
-                }
-                .foregroundStyle(Palette.textPrimary)
+                hudButton("chevron.left") {}
 
                 Spacer()
 
@@ -70,6 +116,18 @@ struct WorkoutScreen: View {
                     .background(Palette.surfaceCard.opacity(0.8), in: Capsule())
                     .foregroundStyle(Palette.textMuted)
                     .padding(.top, Spacing.sm)
+
+                Spacer()
+
+                HStack(spacing: 0) {
+                    // ⚠ 동작 예시는 **HUD 우상단**이다. 하단 컨트롤 줄에 넣지 않는다 —
+                    //   거기는 지금 할 일만 두는 자리다.
+                    hudButton("play.rectangle") { showExample = true }
+                        .coachAnchor("example")
+                    if model.usingCamera {
+                        hudButton("arrow.triangle.2.circlepath.camera") { model.toggleCamera() }
+                    }
+                }
             }
             .padding(.horizontal, Spacing.sm)
 
@@ -80,6 +138,17 @@ struct WorkoutScreen: View {
         }
     }
 
+    private func hudButton(_ systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: TouchTarget.min, height: TouchTarget.min)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Palette.textPrimary)
+        .shadow(color: .black.opacity(0.6), radius: 4)
+    }
+
     private var counter: some View {
         VStack(spacing: Spacing.xs) {
             Text("\(model.snapshot.repCount)")
@@ -87,6 +156,7 @@ struct WorkoutScreen: View {
                 .foregroundStyle(Palette.lime)
                 .scaleEffect(repPulse ? 1.15 : 1.0)
                 .shadow(color: .black.opacity(0.6), radius: 8)
+                .coachAnchor("counter")
 
             // 🔴 **막는 대신 왜 안 세는지 숫자 바로 아래에 알린다.**
             if let reason = FeedbackLabels.notCounting(
@@ -96,15 +166,16 @@ struct WorkoutScreen: View {
                 Text(reason)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Palette.textPrimary)
+                    .multilineTextAlignment(.center)
                     .padding(.horizontal, Spacing.md)
                     .padding(.vertical, Spacing.sm)
                     .background(Palette.infoContainer.opacity(0.92), in: Capsule())
+                    .padding(.horizontal, Spacing.md)
             }
         }
     }
 
     /// 🔴 정렬은 **도착 순(새로 뜬 것이 맨 위)** — 우선순위 순이 아니다.
-    /// 하단 고정이라 위에 붙여야 기존 줄이 밀리지 않는다.
     private var feedbackStack: some View {
         VStack(spacing: Spacing.xs) {
             ForEach(model.snapshot.heldWarnings, id: \.warning) { held in
@@ -145,7 +216,9 @@ struct WorkoutScreen: View {
             statusRow
 
             // 🔴 하단 컨트롤 줄에는 **지금 할 일만** 둔다.
-            Button(action: model.beginCalibration) {
+            Button {
+                model.beginCalibration(prepSeconds: settings.effectivePrepSeconds)
+            } label: {
                 Text(buttonTitle)
                     .font(.system(size: 17, weight: .semibold))
                     .frame(maxWidth: .infinity, minHeight: TouchTarget.min)
@@ -155,6 +228,7 @@ struct WorkoutScreen: View {
             .background(model.engineReady ? Palette.lime : Palette.textDisabled,
                         in: RoundedRectangle(cornerRadius: Radius.md))
             .disabled(!model.engineReady)
+            .coachAnchor("startCalibration")
 
             Button {
                 model.finishSession()
@@ -200,7 +274,7 @@ struct WorkoutScreen: View {
 
             if model.snapshot.stage == .ready {
                 HStack(spacing: Spacing.md) {
-                    chip("확인한 자세", model.snapshot.cameraAngle == .front ? "앞에서" : "옆에서")
+                    chip("확인한 방향", model.snapshot.cameraAngle == .front ? "앞에서" : "옆에서")
                     if let depth = model.snapshot.depth,
                        let text = FeedbackLabels.depth(depth) {
                         chip("깊이", text)

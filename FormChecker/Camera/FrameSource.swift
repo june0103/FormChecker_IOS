@@ -99,6 +99,18 @@ final class CameraFrameSource: NSObject, FrameSource, @unchecked Sendable,
         }
     }
 
+    /// 전/후면 전환. 기준 자세는 **렌즈가 바뀌면 무효가 된다** — 호출부가 다시 재게 한다.
+    func togglePosition() {
+        position = (position == .back) ? .front : .back
+        queue.async { [weak self] in
+            guard let self else { return }
+            let wasRunning = self.session.isRunning
+            if wasRunning { self.session.stopRunning() }
+            _ = self.configure()
+            if wasRunning { self.session.startRunning() }
+        }
+    }
+
     func stop() {
         queue.async { [session] in
             if session.isRunning { session.stopRunning() }
