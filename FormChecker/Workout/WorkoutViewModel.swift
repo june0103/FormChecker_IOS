@@ -52,6 +52,9 @@ final class WorkoutViewModel {
     private(set) var previewImage: CGImage?
     private(set) var usingCamera = false
     private(set) var cameraDenied = false
+    /// 카메라 세션이 끊겼는가(전화·다른 앱·화면 분할). **왜 멈췄는지 말해야 한다** —
+    /// 말하지 않으면 마지막 프레임에 멈춘 화면이 "앱이 죽었다"로 읽힌다.
+    private(set) var cameraInterrupted = false
 
     private let pipeline: PosePipeline
     private let audio = AudioCues()
@@ -124,6 +127,9 @@ final class WorkoutViewModel {
                 if camera.configure() {
                     cameraSource = camera
                     usingCamera = true
+                    camera.onInterruption = { [weak self] interrupted in
+                        Task { @MainActor in self?.cameraInterrupted = interrupted }
+                    }
                     attach(camera)
                     return
                 }
@@ -207,6 +213,13 @@ final class WorkoutViewModel {
     nonisolated func countDropped() {
         work.async { [pipeline] in pipeline.countBackpressureDrop() }
         Task { @MainActor in self.droppedByBackpressure += 1 }
+    }
+
+    /// 🔴 **iOS는 두 번째 권한 요청이 불가능하다.** 한 번 거부되면 앱이 다시 물을 수
+    /// 없고, 사용자가 설정에서 직접 켜야 한다 — 그 길을 앱이 열어 줘야 한다.
+    func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     /// 전면 카메라는 프리뷰가 거울처럼 보인다 — **그릴 때만** 뒤집는다.

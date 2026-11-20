@@ -270,9 +270,24 @@ struct WorkoutScreen: View {
                        icon: "xmark.octagon.fill")
             }
             if model.cameraDenied {
-                banner("카메라를 쓸 수 없어요 — 설정에서 켜 주세요",
-                       color: Palette.info, container: Palette.infoContainer,
-                       icon: "info.circle.fill")
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    banner("카메라를 쓸 수 없어요 — 설정에서 켜 주세요",
+                           color: Palette.info, container: Palette.infoContainer,
+                           icon: "info.circle.fill")
+                    // 🔴 **길을 함께 준다.** iOS는 앱이 권한을 다시 물을 수 없어서,
+                    //    "설정에서 켜 주세요"만 적으면 사용자가 직접 찾아가야 한다.
+                    Button("설정 열기") { model.openSystemSettings() }
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Palette.lime)
+                        .frame(maxWidth: .infinity, minHeight: TouchTarget.min)
+                        .overlay(RoundedRectangle(cornerRadius: Radius.md)
+                            .stroke(Palette.lime, lineWidth: 1))
+                }
+            }
+            if model.cameraInterrupted {
+                banner("카메라가 잠시 멈췄어요 — 다른 앱이 쓰고 있어요",
+                       color: Palette.warning, container: Palette.warningContainer,
+                       icon: "exclamationmark.triangle.fill")
             }
 
             statusRow

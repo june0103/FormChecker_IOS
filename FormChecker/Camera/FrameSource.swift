@@ -52,9 +52,60 @@ final class CameraFrameSource: NSObject, FrameSource, @unchecked Sendable,
     private let queue = DispatchQueue(label: "com.mist.formchecker.camera")
     private(set) var position: AVCaptureDevice.Position
 
+    /// 세션이 끊겼는가(전화·다른 앱·화면 분할). 화면이 **왜 멈췄는지** 말하는 데 쓴다.
+    private(set) var interrupted = false
+    /// 끊김·복구를 화면에 알린다. 어느 스레드에서 불릴지 모르므로 `@Sendable`이다.
+    var onInterruption: (@Sendable (Bool) -> Void)?
+
     init(position: AVCaptureDevice.Position = .back) {
         self.position = position
         super.init()
+        observeInterruptions()
+    }
+
+    // ── 인터럽션 (FR-WRK-11) ────────────────────────────────
+
+    /// 🔴 **끊긴 세션은 저절로 돌아오지 않는다.** 전화가 오거나 다른 앱이 카메라를
+    /// 가져가면 `AVCaptureSession`이 멈추고, 끝난 뒤에도 **직접 다시 시작해야** 한다.
+    /// 그대로 두면 운동 화면이 마지막 프레임에 멈춘 채로 남는다 — 사용자는 앱이
+    /// 죽은 줄 안다.
+    ///
+    /// `runtimeError`도 같이 듣는다. 리소스를 잃는 사고는 인터럽션으로 오지 않고
+    /// 런타임 오류로 오는 경우가 있다.
+    private func observeInterruptions() {
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(sessionInterrupted),
+                           name: .AVCaptureSessionWasInterrupted, object: session)
+        center.addObserver(self, selector: #selector(sessionInterruptionEnded),
+                           name: .AVCaptureSessionInterruptionEnded, object: session)
+        center.addObserver(self, selector: #selector(sessionRuntimeError),
+                           name: .AVCaptureSessionRuntimeError, object: session)
+    }
+
+    @objc private func sessionInterrupted(_ note: Notification) {
+        interrupted = true
+        onInterruption?(true)
+    }
+
+    @objc private func sessionInterruptionEnded(_ note: Notification) {
+        interrupted = false
+        onInterruption?(false)
+        // 끝났다는 통지만으로는 다시 돌지 않는다. 직접 시작한다.
+        start()
+    }
+
+    @objc private func sessionRuntimeError(_ note: Notification) {
+        interrupted = true
+        onInterruption?(true)
+        // 미디어 서비스가 초기화된 경우가 대부분이라 **다시 구성하고** 시작한다.
+        queue.async { [weak self] in
+            guard let self else { return }
+            if self.session.isRunning { self.session.stopRunning() }
+            guard self.configure() else { return }
+            self.session.startRunning()
+            self.interrupted = false
+            self.onInterruption?(false)
+        }
     }
 
     static var isAvailable: Bool {
