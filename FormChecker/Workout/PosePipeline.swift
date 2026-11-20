@@ -60,7 +60,10 @@ struct CompletedRep: Sendable {
 /// 이 규약을 깨고 두 스레드에서 부르면 경합이 생긴다.
 final class PosePipeline: @unchecked Sendable {
 
-    private let config = SquatAnalyzerConfig()
+    private let config: SquatAnalyzerConfig
+    /// 🔴 **이 세션을 어느 기준으로 판정했나.** rep마다 함께 저장한다 — 남기지 않으면
+    /// 나중에 임계값을 재분석할 때 완화한 세션과 아닌 세션이 섞인다.
+    let relaxedForm: Bool
     private let analyzer: SquatFormAnalyzer
     private let counting: CountingThresholds
     private var engine: RTMPoseEngine?
@@ -95,6 +98,10 @@ final class PosePipeline: @unchecked Sendable {
     private var droppedFrames = 0
     private var frameTimes: [Int64] = []
     private var lastInferenceMs: Double = 0
+    /// 추론 지연 원표본. **p95는 EMA로 낼 수 없다.**
+    private(set) var samples = PerformanceSamples()
+    /// 엔진 초기화에 걸린 시간. **앱 콜드스타트가 아니다.**
+    private(set) var modelLoadMs: Int64?
 
     /// 준비 시간. 설정으로 바뀐다 — 화면은 버튼 문구에만 쓴다.
     var prepSeconds: Int = 5
@@ -107,7 +114,13 @@ final class PosePipeline: @unchecked Sendable {
     var onRepCompleted: (@Sendable (CompletedRep) -> Void)?
     var onCue: (@Sendable (AudioCue) -> Void)?
 
-    init() {
+    /// - Parameter relaxedForm: 자세 기준 완화. **세션이 시작될 때 한 번 읽고 끝까지
+    ///   바꾸지 않는다** — 도중에 바뀌면 같은 세션 안에서 다른 기준으로 센 rep이 섞인다.
+    init(relaxedForm: Bool = false) {
+        self.relaxedForm = relaxedForm
+        var config = SquatAnalyzerConfig()
+        if relaxedForm { config.form = config.form.relaxed() }
+        self.config = config
         analyzer = SquatFormAnalyzer(config: config)
         counting = .default
         ema = AngleEma(timeConstantMs: config.smoothing.emaTimeConstantMs)
@@ -124,10 +137,20 @@ final class PosePipeline: @unchecked Sendable {
             throw NSError(domain: "PosePipeline", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "모델이 번들에 없습니다"])
         }
+        // 엔진 초기화 구간만 잰다. **앱 콜드스타트가 아니다** — 이 값으로 시작 속도를
+        // 말하면 백그라운드 로드가 막아 준 비용까지 사용자 대기 시간으로 읽힌다.
+        let started = DispatchTime.now().uptimeNanoseconds
         engine = try RTMPoseEngine(modelPath: url.path)
+        modelLoadMs = Int64((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
     }
 
     var modelName: String { engine?.modelName ?? "-" }
+
+    /// 큐가 밀려 버린 프레임. 추론에 들어가지도 못했지만 **시도한 프레임이다.**
+    func countBackpressureDrop() {
+        droppedFrames += 1
+        samples.recordDrop()
+    }
 
     // ── 기준 자세 ───────────────────────────────────────────
 
@@ -174,9 +197,11 @@ final class PosePipeline: @unchecked Sendable {
         guard let engine else { return }
         guard let pose = engine.analyze(pixelBuffer: pixelBuffer) else {
             droppedFrames += 1
+            samples.recordDrop()
             return
         }
         lastInferenceMs = Double(pose.inferenceTimeNanos) / 1e6
+        samples.record(inferenceMs: lastInferenceMs)
         trackFps(nowMs: timestampMs)
 
         let width = CVPixelBufferGetWidth(pixelBuffer)

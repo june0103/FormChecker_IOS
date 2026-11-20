@@ -11,7 +11,7 @@
 
 ## 지금 상태
 
-**Phase 3 진행 중** (2026-11-20) — 앱이 시뮬레이터에서 돌아간다.
+**Phase 4 진행 중** (2026-11-20) — 앱이 시뮬레이터에서 돌아간다.
 카메라(또는 번들 영상) → 추론 → 판정 → 카운팅 → **저장 → 결과 → 기록 → 홈**이
 끝까지 이어진다.
 
@@ -20,8 +20,9 @@
 - **Phase 1** — Android `:pose-engine` 테스트 **271개**를 이식해 전부 통과
   → [이식 명세](docs/04_판정엔진_포팅명세.md)
 - **Phase 2** — 운동 화면. 아래 "지금 보이는 것" 참고
-- **Phase 3** — SQLite 저장(GRDB) · 결과 리포트 · 날짜별 기록 · 홈 대시보드 ·
-  안내 4층. 테스트 **332개** 통과 (PoseEngine 304 + Storage 28)
+- **Phase 3** — SQLite 저장(GRDB) · 결과 리포트 · 날짜별 기록 · 홈 대시보드 · 안내 4층
+- **Phase 4** — 설정 화면 · 자세 기준 완화를 판정에 연결 · 성능 측정(p95).
+  테스트 **344개** 통과 (PoseEngine 316 + Storage 28)
 
 ```bash
 cd Storage && xcodebuild test -scheme Storage \
@@ -118,7 +119,7 @@ AVCaptureVideoDataOutput ─▶ RTMPose-s Halpe26 (LiteRT, 192×256) ─▶ 키�
 FormChecker/            앱 타겟 — SwiftUI · AVFoundation · 화면          ✅ Phase 2·3
 PoseEngine/             로컬 Swift Package — 추론과 판정                 ✅
   Sources/              26개 파일
-  Tests/                304개 테스트
+  Tests/                316개 테스트
                         의존: Foundation, CoreVideo, CoreGraphics, LiteRT
                         금지: SwiftUI, UIKit, AVFoundation, DB
 Storage/                로컬 Swift Package — SQLite(GRDB)와 날짜 경계     ✅ Phase 3

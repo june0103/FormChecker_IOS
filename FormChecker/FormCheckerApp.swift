@@ -40,6 +40,7 @@ struct RootView: View {
     enum Route: Hashable {
         case history
         case summary(String)
+        case settings
     }
 
     enum Cover: Int, Identifiable {
@@ -53,6 +54,8 @@ struct RootView: View {
                 cover = .workout
             } onOpenHistory: {
                 path.append(.history)
+            } onOpenSettings: {
+                path.append(.settings)
             }
             .navigationBarHidden(true)
             .navigationDestination(for: Route.self) { route in
@@ -69,6 +72,9 @@ struct RootView: View {
                         path.removeLast()
                     }
                     .navigationBarHidden(true)
+                case .settings:
+                    SettingsScreen { path.removeLast() }
+                        .navigationBarHidden(true)
                 }
             }
         }

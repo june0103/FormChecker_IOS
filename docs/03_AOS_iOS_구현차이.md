@@ -370,8 +370,27 @@ Android는 플랫폼 `ImageDecoder`로 재생한다(이미지 라이브러리를
 | DB | **GRDB.swift 7.12.0** ✅ 확정 | SwiftData | ~~🟡 중~~ |
 | 설정 | UserDefaults + `@Observable` | — | 낮음 |
 | DI | 직접 주입 | swift-dependencies | 낮음 |
-| 폰트 | 정적 weight 번들 | Pretendard | 🟡 중 |
+| 폰트 | **시스템 폰트(SF Pro / Apple SD Gothic Neo)** ✅ 확정 | Pretendard 번들 | ~~🟡 중~~ |
 | 패키지 관리 | **SPM + CocoaPods 혼용** (LiteRT가 Pod) | — | 낮음 |
+
+### 폰트를 왜 번들하지 않나
+
+Pretendard를 번들하면 **앱 크기가 늘고**(weight당 수백 KB), 동적 글자 크기와 한글 자간을
+직접 책임져야 한다. 이 앱의 화면 문구는 **떨어져 서서 읽는 짧은 문장**이고, 숫자는
+`monospacedDigit`로 흔들림만 막으면 된다. 시스템 폰트는 두 가지를 공짜로 준다 —
+사용자의 글자 크기 설정과 한글 렌더링이다. 브랜드 글꼴이 필요해지면 그때 **rep 숫자
+하나에만** 적용하는 것이 비용 대비 효과가 크다.
+
+### 미해결: 설정 화면의 렌더 artifact
+
+설정 화면에서 **값이 바뀌는 뷰**(준비 시간·하루 목표 값)가 스크롤 원점에 한 번 더
+그려진다. 고정 문자열은 멀쩡하고, 기능·저장·판정에는 영향이 없다.
+
+원인이 **아닌 것**으로 확인된 것들: 시스템 `Stepper`, `Divider`, 카드 안의 `if/else`
+분기, `.id()` 고정, `AppSettings`를 `@State`로 들고 있던 것, 화면이 싱글턴을 직접 읽던
+것(뷰모델로 분리해도 남음), `VStack` → `LazyVStack`.
+
+같은 모양의 다른 화면(홈·기록·결과)에서는 나지 않는다.
 
 ---
 

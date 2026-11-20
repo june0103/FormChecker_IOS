@@ -13,6 +13,7 @@ struct HomeScreen: View {
 
     let onStartWorkout: () -> Void
     let onOpenHistory: () -> Void
+    let onOpenSettings: () -> Void
 
     @State private var model = HomeViewModel()
     @State private var settings = AppSettings.shared
@@ -44,7 +45,7 @@ struct HomeScreen: View {
                 weekCard
                 calorieCard
                 historyRow
-                profileRow
+                settingsRow
             }
             .padding(Spacing.md)
         }
@@ -313,8 +314,11 @@ struct HomeScreen: View {
         navigationRow("기록 보기", systemImage: "list.bullet.rectangle", action: onOpenHistory)
     }
 
-    private var profileRow: some View {
-        navigationRow("내 정보", systemImage: "person.crop.circle") { sheet = .body }
+    /// 내 정보는 설정 안으로 들어갔다 — 홈에 입구를 둘로 두면 같은 값을 고치는 자리가
+    /// 둘이 되고, 설정에 무엇이 있는지 알 수 없게 된다. 열량 카드의 `내 정보 입력하기`는
+    /// **그 자리에서 바로 고치는 길**이라 남긴다.
+    private var settingsRow: some View {
+        navigationRow("설정", systemImage: "gearshape", action: onOpenSettings)
     }
 
     private func navigationRow(

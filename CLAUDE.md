@@ -28,7 +28,13 @@
   올려 다시 보여줄 수 있다. 문구 정본은 `Guide/OnboardingPages.swift` 한 곳이다.
 - 운동 화면은 **`fullScreenCover`로 띄운다** — `NavigationStack`에 쌓으면 iOS가 가장자리
   스와이프 백을 붙이고, 운동 중 오터치 한 번에 센 횟수가 사라진다.
-- **아직 없는 것**: 설정 화면(Phase 4). 내 정보·하루 목표는 홈에서 여는 시트로만 있다.
+- **Phase 4 진행 중.** 설정 화면(자세 기준·내 정보·측정·하루 목표·도움말·개발용)과
+  성능 측정(p95)이 붙었다. **자세 기준 완화가 판정에 연결된 유일한 사용자 설정**이고,
+  세션이 시작될 때 한 번 읽어 끝까지 바꾸지 않는다.
+- 성능 대표값은 `PerformanceSamples`가 **원표본에서** 낸다 — Android와 같은 식으로
+  `정렬 후 (n-1)*95/100`번째다. 식을 바꾸면 두 앱의 숫자를 나란히 놓을 수 없다.
+- **미해결**: 설정 화면에서 값이 바뀌는 뷰가 스크롤 원점에 한 번 더 그려진다
+  (기능 영향 없음) → `docs/03` §17.
 - 기준 Android 커밋: `79ef0bb` (2026-09-02)
 - 확정된 스택: SwiftPM(CocoaPods 안 씀) · LiteRT C API 직접 래핑 · 최소 iOS 17 ·
   리샘플링 최근접 · **로컬 DB는 GRDB 7.12.0**
@@ -37,7 +43,7 @@
 ```bash
 tools/fetch_litert.sh                                    # 최초 1회
 cd PoseEngine && xcodebuild test -scheme PoseEngine \
-  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 304개 통과해야 한다
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 316개 통과해야 한다
 cd Storage   && xcodebuild test -scheme Storage \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 28개 통과해야 한다
 ```
@@ -80,7 +86,7 @@ Phase 0  ✅ 키포인트 동등성 (BGRA·stride·미러링까지)
 Phase 1  ✅ 판정 엔진 이식 + Android 테스트 271개 통과
 Phase 2  ✅ 운동 화면 — 파이프라인·오버레이·기준 자세·피드백·소리·안내
 Phase 3  ✅ 저장·기록·홈·결과 리포트 · 안내 4층
-Phase 4  ▶  설정 화면 · 디자인 마감 · 성능 측정
+Phase 4  ▶  설정 화면 ✅ · 성능 측정(p95) ✅ · 폰트 확정 ✅ / 실기기 측정 남음
 ```
 
 Phase 2에서는 **판정 로직을 화면에 넣지 않는다** — 넣으면 두 화면이 다른 답을 낸다.

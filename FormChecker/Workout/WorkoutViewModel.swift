@@ -53,7 +53,7 @@ final class WorkoutViewModel {
     private(set) var usingCamera = false
     private(set) var cameraDenied = false
 
-    private let pipeline = PosePipeline()
+    private let pipeline: PosePipeline
     private let audio = AudioCues()
     private var source: FrameSource?
     private let work = DispatchQueue(label: "com.mist.formchecker.pipeline", qos: .userInitiated)
@@ -67,6 +67,12 @@ final class WorkoutViewModel {
     private var lastPreviewMs: Int64 = 0
 
     private(set) var cameraSource: CameraFrameSource?
+
+    /// 🔴 **자세 기준 완화는 세션이 시작될 때 한 번 읽는다.** 도중에 바뀌면 같은 세션
+    /// 안에서 다른 기준으로 센 rep이 섞이고, 나중에 임계값을 재분석할 수 없다.
+    init(relaxedForm: Bool = AppSettings.shared.relaxedForm) {
+        pipeline = PosePipeline(relaxedForm: relaxedForm)
+    }
 
     // ── 수명 ────────────────────────────────────────────────
 
@@ -196,7 +202,10 @@ final class WorkoutViewModel {
 
     // ── 조작 ────────────────────────────────────────────────
 
+    /// 🔴 **백프레셔로 버린 프레임도 분모에 넣는다.** 추론이 실패한 것만 세면
+    /// 느려서 버린 프레임이 통계에서 사라져, 느릴수록 좋아 보이는 지표가 된다.
     nonisolated func countDropped() {
+        work.async { [pipeline] in pipeline.countBackpressureDrop() }
         Task { @MainActor in self.droppedByBackpressure += 1 }
     }
 
@@ -231,8 +240,15 @@ final class WorkoutViewModel {
         return persist()
     }
 
+    /// 파이프라인은 전용 큐에 갇혀 있다. **세션 끝에 한 번만** 건너와 읽는다 —
+    /// 매 프레임이 아니라 종료 시 한 번이라 `sync`의 대기(최대 추론 1회)가 문제되지 않는다.
+    private var performanceSamples: PerformanceSamples { work.sync { pipeline.samples } }
+    private var modelLoadMs: Int64? { work.sync { pipeline.modelLoadMs } }
+
     private func persist() -> String? {
-        let thresholds = FormThresholds()
+        // 판정에 실제로 쓴 임계값을 그대로 적는다 — `relaxed()`를 썼다면 그 값이다.
+        let relaxed = pipeline.relaxedForm
+        let thresholds = relaxed ? FormThresholds().relaxed() : FormThresholds()
         let session = WorkoutSession(
             id: sessionId,
             userId: nil,
@@ -272,22 +288,27 @@ final class WorkoutViewModel {
                 kneeToeSide: rep.kneeToeSide?.rawValue,
                 warningPhases: RepRecordMapping.phases(rep.warningPhases),
                 // 어느 기준으로 판정했는지를 rep마다 남긴다 — 세션 도중에도 바뀔 수 있는 값이다.
-                relaxedForm: false,
+                relaxedForm: relaxed,
                 kneeTolerance: Double(thresholds.kneeToeToleranceRatio),
                 shallowTolerance: Double(thresholds.shallowToleranceRatio)
             )
         }
 
-        let metrics = PerformanceMetrics(
+        // 🔴 **대표값은 평균이 아니라 p95다.** 평균 10ms여도 20프레임에 한 번 60ms가
+        //    걸리면 그 프레임에서 rep이 끊긴다. 화면에 띄우는 값(EMA)과 기록용 원표본은
+        //    다른 것이라, p95는 `PerformanceSamples`가 따로 모은다.
+        let samples = performanceSamples
+        let metrics = samples.isEmpty ? nil : PerformanceMetrics(
             id: UUID().uuidString,
             sessionId: sessionId,
-            modelLoadMs: nil,
-            avgInferenceMs: snapshot.inferenceMs,
-            p95InferenceMs: nil,
-            droppedFrameRatio: nil,
+            modelLoadMs: modelLoadMs,
+            avgInferenceMs: samples.averageMs,
+            p95InferenceMs: samples.p95Ms,
+            droppedFrameRatio: samples.droppedRatio,
             avgFps: snapshot.analysisFps,
+            // 지금은 CPU 경로뿐이다. delegate를 붙이면 **측정한 뒤에** 이름이 바뀐다.
             delegateType: "cpu",
-            analyzedFrameCount: recorded.reduce(0) { $0 + $1.rep.summary.aggregate.analyzedFrameCount },
+            analyzedFrameCount: samples.analyzed,
             createdAt: Int64(Date().timeIntervalSince1970 * 1000)
         )
 
