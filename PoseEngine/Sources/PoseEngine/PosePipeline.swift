@@ -130,6 +130,12 @@ public final class PosePipeline: @unchecked Sendable {
     public var onRepCompleted: (@Sendable (CompletedRep) -> Void)?
     public var onCue: (@Sendable (AudioCue) -> Void)?
 
+    /// 상태머신에 들어간 프레임을 그대로 흘려준다.
+    ///
+    /// **G1 기준값을 뽑는 자리**다 — 이 입력을 CSV로 떨궈 Android에 같은 것을 먹이면
+    /// 두 플랫폼의 카운팅을 나란히 놓을 수 있다. 앱은 쓰지 않는다.
+    public var onRepFrame: (@Sendable (RepFrame) -> Void)?
+
     /// - Parameter relaxedForm: 자세 기준 완화. **세션이 시작될 때 한 번 읽고 끝까지
     ///   바꾸지 않는다** — 도중에 바뀌면 같은 세션 안에서 다른 기준으로 센 rep이 섞인다.
     public init(relaxedForm: Bool = false) {
@@ -360,6 +366,7 @@ public final class PosePipeline: @unchecked Sendable {
             leftFoot: nil, rightFoot: nil,
             minLegConfidence: features.minConfidence
         )
+        onRepFrame?(frame)
         let event = stateMachine.update(frame)
         let inRep = stateMachine.state.isInRep
 

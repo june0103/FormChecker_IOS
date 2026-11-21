@@ -109,6 +109,7 @@ final class PosePipelineSequenceTests: XCTestCase {
     /// 콜백이 `@Sendable`이라 지역 변수에 바로 담을 수 없다. 테스트는 한 스레드에서만
     /// 돌므로 상자 하나로 받는다.
     private final class Recorder: @unchecked Sendable {
+        var frames: [RepFrame] = []
         var reps: [CompletedRep] = []
         var cues: [AudioCue] = []
         var last = WorkoutSnapshot()
@@ -127,6 +128,7 @@ final class PosePipelineSequenceTests: XCTestCase {
         pipeline.onRepCompleted = { recorder.reps.append($0) }
         pipeline.onCue = { recorder.cues.append($0) }
         pipeline.onSnapshot = { recorder.last = $0 }
+        pipeline.onRepFrame = { recorder.frames.append($0) }
 
         var now: Int64 = 0
         pipeline.beginCalibration(nowMs: now)
@@ -165,6 +167,7 @@ final class PosePipelineSequenceTests: XCTestCase {
         let recorder = Recorder()
         pipeline.onRepCompleted = { recorder.reps.append($0) }
         pipeline.onSnapshot = { recorder.last = $0 }
+        pipeline.onRepFrame = { recorder.frames.append($0) }
 
         var now: Int64 = 0
         for angle in squatAngles(bottom: 80) {
@@ -224,21 +227,117 @@ final class PosePipelineSequenceTests: XCTestCase {
                       "실제 경고: \(recorder.reps.first?.warnings ?? [])")
     }
 
-    // ── G1 산출물 ────────────────────────────────────────────
+    // ── G1 기준값 ────────────────────────────────────────────
 
-    /// 같은 입력에서 iOS가 센 수와 rep별 경고를 **표준출력에 남긴다.**
+    /// 두 플랫폼의 CSV를 잇는 키. **이름을 바꾸면 Android 쪽 기준값과 짝이 깨진다.**
+    private var sequences: [(name: String, angles: [Float], kneeInward: Float)] {
+        var triple = squatAngles(bottom: 80)
+        for _ in 0..<2 { triple += squatAngles(bottom: 80, standFrames: 15).dropFirst(15) }
+        return [
+            ("deep", squatAngles(bottom: 80), 0),
+            ("parallel", squatAngles(bottom: 100), 0),
+            ("shallow_counted", squatAngles(bottom: 120), 0),
+            ("too_shallow", squatAngles(bottom: 140), 0),
+            ("valgus", squatAngles(bottom: 80), 0.04),
+            ("triple", triple, 0),
+        ]
+    }
+
+    /// 저장소 루트. `#filePath`는 `PoseEngine/Tests/PoseEngineTests/…`다.
+    private static var referenceDir: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // PoseEngineTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // PoseEngine
+            .deletingLastPathComponent()   // 저장소 루트
+            .appendingPathComponent("tools/android-reference")
+    }
+
+    private func csv(_ value: Float?) -> String {
+        guard let value else { return "" }   // 🔴 nil은 **빈 칸**이다. 0으로 바꾸지 말 것.
+        return String(format: "%.6f", value)
+    }
+
+    /// 상태머신에 들어간 **원시 입력**과 iOS가 낸 답을 파일로 남긴다.
     ///
-    /// Android 쪽에서 같은 각도 열을 먹여 나온 수를 옆에 놓으면 G1이 닫힌다.
-    /// `KPDUMP`(Phase 0)와 같은 방식이다 — 시뮬레이터 샌드박스 밖으로 파일을 꺼내는 것보다
-    /// 단순하고 CI 로그에 그대로 남는다.
-    func test_G1_덤프를_남긴다() {
-        for (bottom, inward) in [(Float(80), Float(0)), (100, 0), (120, 0), (140, 0), (80, 0.04)] {
-            let (_, recorder) = run(angles: squatAngles(bottom: bottom), kneeInward: inward)
+    /// Android는 같은 `g1_frames.csv`를 먹고 `g1_ios.csv`와 맞춰 보면 된다
+    /// (`tools/android-reference/G1CountingTest.kt`).
+    ///
+    /// 🔴 **스무딩된 값은 내보내지 않는다.** 원시 각도만 주고 양쪽이 각자 EMA·중앙값을
+    ///    돌려야 비교 범위에 스무딩까지 들어온다. 스무딩 결과를 넘기면 상태머신만 비교된다.
+    func test_G1_기준값을_파일로_남긴다() throws {
+        var frameRows = ["sequence,frame,timestampMs,rawKneeAngle,leftKneeAngle,rightKneeAngle,"
+                         + "hipAngle,torsoLeanDegrees,kneeAsymmetryDegrees,kneeSpreadRatio,"
+                         + "minLegConfidence"]
+        var resultRows = ["sequence,reps,warnings"]
+
+        for sequence in sequences {
+            let (_, recorder) = run(angles: sequence.angles, kneeInward: sequence.kneeInward)
+            for (index, frame) in recorder.frames.enumerated() {
+                frameRows.append([
+                    sequence.name, "\(index)", "\(frame.timestampMs)",
+                    csv(frame.rawKneeAngle), csv(frame.leftKneeAngle), csv(frame.rightKneeAngle),
+                    csv(frame.hipAngle), csv(frame.torsoLeanDegrees),
+                    csv(frame.kneeAsymmetryDegrees), csv(frame.kneeSpreadRatio),
+                    csv(frame.minLegConfidence),
+                ].joined(separator: ","))
+            }
             let warnings = recorder.reps
                 .map { $0.warnings.map(\.rawValue).sorted().joined(separator: "|") }
                 .joined(separator: ";")
-            print("G1,bottom=\(Int(bottom)),kneeInward=\(inward),"
-                  + "reps=\(recorder.reps.count),warnings=[\(warnings)]")
+            resultRows.append("\(sequence.name),\(recorder.reps.count),\(warnings)")
+            print("G1,\(sequence.name),reps=\(recorder.reps.count),warnings=[\(warnings)]")
         }
+
+        let dir = Self.referenceDir
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try (frameRows.joined(separator: "\n") + "\n")
+            .write(to: dir.appendingPathComponent("g1_frames.csv"),
+                   atomically: true, encoding: .utf8)
+        try (resultRows.joined(separator: "\n") + "\n")
+            .write(to: dir.appendingPathComponent("g1_ios.csv"),
+                   atomically: true, encoding: .utf8)
+    }
+
+    /// 🔴 **최소 체인이 전체 파이프라인과 같은 수를 세는지 못 박는다.**
+    ///
+    /// Android 쪽 생성기는 `pose-engine`의 순수 조각(EMA·중앙값·상태머신)만 돌린다.
+    /// 그 조각 묶음이 **실제 운동 화면이 타는 경로와 다른 답**을 내면, 두 플랫폼을
+    /// 비교한 결과가 무엇을 뜻하는지 알 수 없어진다. 그래서 iOS 쪽에서 둘이 같다는 것을
+    /// 먼저 묶어 둔다 — 이게 깨지면 G1 비교 자체가 무효다.
+    func test_최소_체인이_전체_파이프라인과_같은_수를_센다() {
+        for sequence in sequences {
+            let (_, recorder) = run(angles: sequence.angles, kneeInward: sequence.kneeInward)
+            XCTAssertEqual(minimalChainCount(recorder.frames), recorder.reps.count,
+                           "시퀀스 \(sequence.name)에서 최소 체인과 파이프라인이 갈렸다")
+        }
+    }
+
+    /// Android `G1CountingTest`가 하는 것과 **같은 계산**. 원시 각도만 먹는다.
+    private func minimalChainCount(_ frames: [RepFrame]) -> Int {
+        let smoothing = SmoothingConfig()
+        let ema = AngleEma(timeConstantMs: smoothing.emaTimeConstantMs)
+        var median = MedianWindow(size: MedianWindow.sizeFor(
+            targetSpanMs: smoothing.medianWindowMs, fps: 30))
+        let machine = RepStateMachine(thresholds: .default) { .front }
+
+        var count = 0
+        for frame in frames {
+            let rebuilt = RepFrame(
+                timestampMs: frame.timestampMs,
+                rawKneeAngle: frame.rawKneeAngle,
+                smoothedKneeAngle: ema.update(frame.rawKneeAngle, timestampMs: frame.timestampMs),
+                medianKneeAngle: median.push(frame.rawKneeAngle),
+                leftKneeAngle: frame.leftKneeAngle,
+                rightKneeAngle: frame.rightKneeAngle,
+                hipAngle: frame.hipAngle,
+                torsoLeanDegrees: frame.torsoLeanDegrees,
+                kneeAsymmetryDegrees: frame.kneeAsymmetryDegrees,
+                kneeSpreadRatio: frame.kneeSpreadRatio,
+                minLegConfidence: frame.minLegConfidence
+            )
+            if case .completed = machine.update(rebuilt) { count += 1 }
+        }
+        return count
     }
 }

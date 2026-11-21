@@ -1,0 +1,7 @@
+sequence,reps,warnings
+deep,1,
+parallel,1,
+shallow_counted,1,
+too_shallow,0,
+valgus,1,kneeValgus
+triple,3,;;

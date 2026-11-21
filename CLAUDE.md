@@ -38,7 +38,9 @@
   포즈 모델을 **전용 큐에서** 읽어 두고, 운동 화면은 그걸 가져다 쓴다.
 - 🔴 **G1(rep 카운팅 동등성)은 닫히지 않았다.** Phase 1 완료기준의 절반인 "녹화 영상
   5개 rep 수 일치"가 비어 있다 — 영상도 Android 기준 횟수도 저장소에 없다.
-  주입 하네스(`PosePipelineSequenceTests`)와 iOS 쪽 수는 나왔다. 번들 `squat_demo.mp4`는
+  주입 하네스(`PosePipelineSequenceTests`)와 iOS 쪽 수는 나왔고, Android 생성기
+  (`tools/android-reference/G1CountingTest.kt`)도 **기기 없이 도는 JVM 테스트**로 붙었다 —
+  Android 저장소에서 한 번 돌리면 카운팅 부분은 닫힌다. 번들 `squat_demo.mp4`는
   동작 예시 일러스트라 **픽스처가 못 된다** → `docs/03` §17.
 - 앱 아이콘이 붙었다. **스플래시와 같은 도형**이고, 손으로 그린 PNG가 아니라
   `tools/make_app_icon.swift`가 같은 좌표에서 뽑는다. 좌표를 고쳤으면 다시 돌릴 것 —
@@ -57,7 +59,7 @@
 ```bash
 tools/fetch_litert.sh                                    # 최초 1회
 cd PoseEngine && xcodebuild test -scheme PoseEngine \
-  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 324개 통과해야 한다
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 325개 통과해야 한다
 cd Storage   && xcodebuild test -scheme Storage \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'  # 28개 통과해야 한다
 ```

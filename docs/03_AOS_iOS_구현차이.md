@@ -512,9 +512,41 @@ rep 수 일치`), 뒤의 절반이 비어 있었다. `docs/04` §15는 앞의 �
 | | 상태 |
 |---|---|
 | 주입 하네스 | ✅ `PosePipelineSequenceTests` — 기준 자세부터 카운팅·경고·소리 신호까지 **실제 파이프라인**으로 돈다 |
-| iOS 쪽 수 | ✅ `G1,…` 줄로 표준출력에 남는다 |
+| iOS 쪽 수 | ✅ `tools/android-reference/g1_ios.csv` + 상태머신 입력 `g1_frames.csv` |
+| Android 생성기 | ✅ `tools/android-reference/G1CountingTest.kt` — **기기 없이** 도는 JVM 테스트 |
+| Android 쪽 수 | ⏳ 저 테스트를 Android 저장소에서 한 번 돌리면 나온다 |
+| 경고 집합(G3) | ❌ `SquatFormAnalyzer`는 자세가 필요한데 CSV에는 각도만 있다 |
 | 녹화 영상 5개 | ❌ **저장소 어디에도 없다.** Android 수집 데이터는 기기의 `captures/`에 있고 `adb pull`로 꺼낸다 |
-| Android 쪽 수 | ❌ 같은 입력을 Android에서 돌려야 나온다 |
+
+#### 왜 각도만 주고받나
+
+`RepFrame`이 **양쪽에서 필드 단위로 같다.** 상태머신에 들어가기 직전의 그 구조체를
+CSV로 떨구면 자세를 복원할 필요 없이 카운팅을 비교할 수 있다.
+
+🔴 **스무딩된 값은 내보내지 않는다.** 원시 각도만 주고 EMA·중앙값은 양쪽이 각자 돌린다 —
+스무딩 결과를 넘기면 상태머신만 비교되고 **스무딩 차이가 그대로 숨는다.** 위상 지연이
+한 프레임만 달라도 경계에서 rep 수가 갈린다.
+
+그리고 iOS 쪽에 **최소 체인이 전체 파이프라인과 같은 수를 센다**는 테스트를 같이 뒀다.
+Android 생성기는 순수 조각만 돌리므로, 그 조각 묶음이 실제 화면과 다른 답을 내면 비교
+결과가 무엇을 뜻하는지 알 수 없어진다.
+
+#### ⚠ Android도 같은 구조 문제를 안고 있다
+
+Android의 오케스트레이션은 `app` 모듈의 `WorkoutViewModel.onResult` — **1661줄짜리
+`AndroidViewModel`**이고 Application·카메라X·DB·오디오에 묶여 있어 **JVM에서 돌릴 수
+없다.** `onResult`는 `private`이고, iOS의 `process(pose:)`와 정확히 같은 자리다.
+
+그래서 `G1CountingTest`는 `pose-engine`의 순수 조각을 직접 엮는다. 다행히 조각은
+같다 — `CaptureRecorder`(수집 경로)와 `WorkoutViewModel`(운동 경로)이 **같은 `AngleEma` ·
+`MedianWindow` · `RepStateMachine`**을 같은 순서로 쓴다는 것을 코드에서 확인했다.
+
+👉 **Android도 `onResult`의 프레임 처리부를 `pose-engine`으로 옮기면 간극이 닫힌다.**
+임계값 변경이 아니라 구조 변경이라 Android 저장소에 제기해야 한다.
+
+`RepFrame.leftFoot`/`rightFoot`은 iOS가 `nil`을 넣고 Android는 `FootSample`을 넣는다.
+**고치지 말 것** — 양쪽 엔진 어디서도 읽지 않는다. 수집 기록(`CaptureExport`)만 쓰는
+값이고 수집 화면은 iOS 범위 밖이다.
 
 ⚠ **번들 `squat_demo.mp4`는 G1 픽스처가 못 된다.** 동작 예시용 해부 일러스트라
 계속 스쿼트 자세고, 서 있는 구간이 없어 기준 자세가 잡히지 않는다(준비 자세 지적:
